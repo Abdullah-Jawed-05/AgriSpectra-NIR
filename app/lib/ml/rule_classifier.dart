@@ -141,6 +141,14 @@ class RuleBasedClassifier {
     );
   }
 
+  // Deliberately does not return QualityClass.broken or .shellFree: this
+  // rule engine has no real barley reference photos to derive a heuristic
+  // for "physically fragmented" or "hull missing" against, and guessing
+  // thresholds for those without any visual reference would be exactly
+  // the kind of fabricated-looking-precise behavior this project avoids
+  // elsewhere (§66 of the build spec). Model V1, trained on the labeled
+  // dataset that includes real examples of both, is what should actually
+  // learn to detect them — see docs/ML_PIPELINE.md.
   QualityClass _classify(SeedFeatures f, List<String> anomalies) {
     if (anomalies.contains('possible_insect_damage')) return QualityClass.insectDamaged;
     if (f.damage.darkRegionRatio > _highDamageDarkRatio * 1.6) return QualityClass.moldSuspect;

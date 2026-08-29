@@ -16,27 +16,63 @@ exactly the leakage §17 of the original build spec warns about.
 
 ## Directory structure for `prepare_dataset.py`
 
+Two layouts work, auto-detected per crop:
+
 ```
 raw/
-├── wheat/
+├── wheat/                            (3-level: explicit batches)
 │   ├── batch_2026-08-01_farmA/
 │   │   ├── GOOD/*.jpg
 │   │   ├── DAMAGED/*.jpg
 │   │   └── DISCOLORED/*.jpg
 │   └── batch_2026-08-03_farmB/
 │       └── ...
-└── rice/
+└── barley/                           (2-level: no batch folder)
+    ├── GOOD/*.jpg
+    ├── DAMAGED/*.jpg
+    ├── BROKEN/*.jpg
     └── ...
 ```
 
+The 2-level form (just sort photos straight into per-label folders) is
+fine for an early sanity-check pass or when everything really did come
+from one shoot — `prepare_dataset.py` treats all of a crop's images as one
+implicit batch in that case. Switch to the 3-level form once you're
+collecting across multiple sessions/setups deliberately, so splitting can
+group by batch properly (see below).
+
 - One image = one photographed group of seeds (10–50, matching the app's
-  capture guidance in `app/lib/presentation/screens/scan_flow_screen.dart`).
+  capture guidance in `app/lib/presentation/screens/scan_flow_screen.dart`),
+  **or** a single seed if you're photographing/cropping them individually
+  — either way, `prepare_dataset.py` re-detects seeds in each image itself,
+  so both work.
 - `label` folders use the `QualityClass` storage keys from
-  `app/lib/domain/value_objects/quality_class.dart`: `GOOD`, `DAMAGED`,
-  `DISCOLORED`, `SHRIVELED`, `MOLD_SUSPECT`, `INSECT_DAMAGED`, `UNKNOWN`.
+  `app/lib/domain/value_objects/quality_class.dart`. Current set, refined
+  against a real barley reference collection:
+
+  | Key | Meaning |
+  |---|---|
+  | `GOOD` | no defects observed (includes what might otherwise be called "premium"/"perfect" — score, not a separate class, carries that gradation) |
+  | `DAMAGED` | hull/shell compromised but the seed may still be viable |
+  | `BROKEN` | physically fragmented (e.g. cut/split in half) — an observable physical state, not itself a germination claim, but practically implies non-viability |
+  | `DISCOLORED` | abnormal pigmentation |
+  | `SHRIVELED` | shrunken/wrinkled appearance (also where a purely visual "looks dead" call belongs — see the note below) |
+  | `SHELL_FREE` | hull missing entirely, seed exposed |
+  | `MOLD_SUSPECT` | visible fungal-like growth |
+  | `INSECT_DAMAGED` | holes/boring consistent with insect damage |
+  | `UNKNOWN` | doesn't fit a specific category |
+
+  Folder names are matched case-insensitively with spaces/hyphens
+  normalized to underscores, so `Shell Free`, `shell-free`, and
+  `SHELL_FREE` all land on the same label.
 - These are **visual-quality labels a human assigned by looking at the
-  seed**, not germination outcomes. See §Germination dataset below for
-  that separate, harder protocol.
+  seed**, not germination outcomes. Deliberately no `DEAD`/`ALIVE` label:
+  a photo alone can't establish that, only a real germination test can
+  (§15/§16 of the build spec) — a seed that visually looks non-viable
+  belongs in `SHRIVELED` (or another specific defect class), not a label
+  that asserts a biological outcome nothing here actually measured. See
+  §Germination dataset below for the protocol that *would* justify a real
+  viability label.
 
 ## Labeling methodology
 

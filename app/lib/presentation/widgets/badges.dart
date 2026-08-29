@@ -48,9 +48,13 @@ class QualityClassBadge extends StatelessWidget {
         QualityClass.good => AppColors.good,
         QualityClass.damaged ||
         QualityClass.discolored ||
-        QualityClass.shriveled =>
+        QualityClass.shriveled ||
+        QualityClass.shellFree =>
           AppColors.moderate,
-        QualityClass.moldSuspect || QualityClass.insectDamaged => AppColors.low,
+        QualityClass.broken ||
+        QualityClass.moldSuspect ||
+        QualityClass.insectDamaged =>
+          AppColors.low,
         QualityClass.unknown => AppColors.inkFaint,
       };
 
