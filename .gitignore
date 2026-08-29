@@ -1,0 +1,10 @@
+# Python / ml/
+ml/.venv/
+ml/**/__pycache__/
+ml/dataset_v*/
+ml/models/
+raw/
+
+# Misc
+*.log
+.DS_Store

@@ -1,0 +1,16 @@
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.4
+lightgbm>=4.3
+opencv-python-headless>=4.9
+matplotlib>=3.8
+Pillow>=10.2
+joblib>=1.3
+skl2onnx>=1.16
+onnx>=1.15
+onnxruntime>=1.17
+
+# Only needed for train_cnn.py / export_tflite.py (Model V2, §8 of
+# docs/ARCHITECTURE.md — not required for the V1 classical baseline).
+# Uncomment once a real image dataset exists and V2 work starts.
+# tensorflow>=2.16
