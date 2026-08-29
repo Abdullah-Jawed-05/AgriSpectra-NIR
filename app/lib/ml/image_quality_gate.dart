@@ -11,22 +11,34 @@ class ImageQualityGate {
   const ImageQualityGate({
     this.minResolutionPx = 720,
     this.minAcceptableScore = 0.55,
+    this.workingMaxDimension = 900,
   });
 
   final int minResolutionPx;
   final double minAcceptableScore;
 
-  ImageQualityReport evaluate(img.Image image) {
+  /// A phone camera frame can be 12MP+; none of these metrics are
+  /// statistical estimates that need full resolution, so everything past
+  /// the resolution check itself runs on a downscaled copy. Without this,
+  /// a full-resolution image means multiple whole-image pixel passes
+  /// (grayscale conversion + exposure/glare/background), which is the
+  /// dominant cost of the entire analysis pipeline on a real device —
+  /// resolution is checked against the *original* dimensions first, then
+  /// every subsequent metric runs on the downscaled copy.
+  final int workingMaxDimension;
+
+  ImageQualityReport evaluate(img.Image original) {
     final warnings = <String>[];
 
-    final resolutionOk = min(image.width, image.height) >= minResolutionPx;
+    final resolutionOk = min(original.width, original.height) >= minResolutionPx;
     if (!resolutionOk) {
       warnings.add(
-        'Image resolution is too low (${image.width}x${image.height}). '
+        'Image resolution is too low (${original.width}x${original.height}). '
         'Move closer or use a higher-resolution camera setting.',
       );
     }
 
+    final image = _downscale(original, workingMaxDimension);
     final gray = img.grayscale(image);
 
     final blurScore = _blurScore(gray);
@@ -34,13 +46,27 @@ class ImageQualityGate {
       warnings.add('Image appears blurry. Hold the phone steady and let it focus before capturing.');
     }
 
-    final exposureScore = _exposureScore(gray, warnings);
-    final glareScore = _glareScore(gray);
+    // Exposure, glare, and background contrast are all derived from the
+    // same per-pixel luminance value, so they're computed together in one
+    // pass rather than three separate whole-image loops.
+    final stats = _luminanceStats(gray);
+
+    final overexposed = stats.overexposedRatio;
+    final underexposed = stats.underexposedRatio;
+    if (overexposed > 0.05) warnings.add('Image is overexposed. Reduce lighting or move out of direct sun.');
+    if (underexposed > 0.15) warnings.add('Image is underexposed. Increase lighting.');
+    final exposurePenalty = (overexposed * 3 + underexposed * 2).clamp(0.0, 1.0);
+    final exposureScore = (1.0 - exposurePenalty).clamp(0.0, 1.0);
+
+    final glareScore = (1.0 - (stats.brightRatio * 6)).clamp(0.0, 1.0);
     if (glareScore < 0.6) {
       warnings.add('Strong glare detected. Adjust lighting or angle to reduce reflections.');
     }
 
-    final backgroundScore = _backgroundScore(gray);
+    // A plain contrasting tray background against seeds typically produces
+    // luminance std-dev well above 35 in practice; below ~15 is flat/low
+    // contrast — see _backgroundScore's original derivation.
+    final backgroundScore = (stats.stdDev / 45).clamp(0.0, 1.0);
     if (backgroundScore < 0.4) {
       warnings.add('Background is too similar to the seeds. Use a plain, contrasting background.');
     }
@@ -63,6 +89,13 @@ class ImageQualityGate {
       backgroundScore: backgroundScore,
       warnings: warnings,
     );
+  }
+
+  img.Image _downscale(img.Image image, int maxDim) {
+    if (max(image.width, image.height) <= maxDim) return image;
+    return image.width >= image.height
+        ? img.copyResize(image, width: maxDim)
+        : img.copyResize(image, height: maxDim);
   }
 
   /// Variance of the Laplacian, normalized into a rough 0..1 "sharpness"
@@ -102,51 +135,42 @@ class ImageQualityGate {
     return (variance / 600).clamp(0.0, 1.0);
   }
 
-  double _exposureScore(img.Image gray, List<String> warnings) {
-    final histogram = List<int>.filled(256, 0);
-    for (final pixel in gray) {
-      histogram[img.getLuminance(pixel).round().clamp(0, 255)]++;
-    }
+  _LuminanceStats _luminanceStats(img.Image gray) {
     final total = gray.width * gray.height;
-
-    final overexposed = histogram.sublist(250).fold(0, (a, b) => a + b) / total;
-    final underexposed = histogram.sublist(0, 6).fold(0, (a, b) => a + b) / total;
-
-    if (overexposed > 0.05) warnings.add('Image is overexposed. Reduce lighting or move out of direct sun.');
-    if (underexposed > 0.15) warnings.add('Image is underexposed. Increase lighting.');
-
-    final penalty = (overexposed * 3 + underexposed * 2).clamp(0.0, 1.0);
-    return (1.0 - penalty).clamp(0.0, 1.0);
-  }
-
-  double _glareScore(img.Image gray) {
-    int brightPixels = 0;
-    final total = gray.width * gray.height;
-    for (final pixel in gray) {
-      if (img.getLuminance(pixel) > 248) brightPixels++;
-    }
-    final glareRatio = brightPixels / total;
-    return (1.0 - (glareRatio * 6)).clamp(0.0, 1.0);
-  }
-
-  /// Approximates "is the background distinct from the seeds" via overall
-  /// image contrast (std. dev. of luminance). A low-contrast frame usually
-  /// means the seeds blend into the background, which is exactly the
-  /// condition that breaks thresholding-based detection downstream.
-  double _backgroundScore(img.Image gray) {
+    int overexposedCount = 0, underexposedCount = 0, brightCount = 0;
     double sum = 0, sumSq = 0;
-    final total = gray.width * gray.height;
+
     for (final pixel in gray) {
       final l = img.getLuminance(pixel);
       sum += l;
       sumSq += l * l;
+      if (l >= 250) overexposedCount++;
+      if (l <= 5) underexposedCount++;
+      if (l > 248) brightCount++;
     }
+
     final mean = sum / total;
     final variance = (sumSq / total) - (mean * mean);
-    final stdDev = sqrt(max(0, variance));
-    // A plain contrasting tray background against seeds typically produces
-    // luminance std-dev well above 35 in practice; below ~15 is flat/low
-    // contrast.
-    return (stdDev / 45).clamp(0.0, 1.0);
+
+    return _LuminanceStats(
+      overexposedRatio: overexposedCount / total,
+      underexposedRatio: underexposedCount / total,
+      brightRatio: brightCount / total,
+      stdDev: sqrt(max(0, variance)),
+    );
   }
+}
+
+class _LuminanceStats {
+  final double overexposedRatio;
+  final double underexposedRatio;
+  final double brightRatio;
+  final double stdDev;
+
+  const _LuminanceStats({
+    required this.overexposedRatio,
+    required this.underexposedRatio,
+    required this.brightRatio,
+    required this.stdDev,
+  });
 }

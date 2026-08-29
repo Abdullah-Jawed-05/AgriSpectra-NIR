@@ -9,13 +9,24 @@ import 'segmented_seed.dart';
 /// masked pixels of a [SegmentedSeed]. Geometry is already known from
 /// segmentation (see [SegmentedSeed.geometry]) — this class only adds what
 /// segmentation didn't already compute.
+///
+/// Every sub-extractor here is written to walk each seed's cropped pixels
+/// exactly once. It's tempting to write these independently (grayscale
+/// conversion, texture, damage) since they're conceptually separate — but
+/// on a real device, with up to 50 seeds per scan, a second full pixel
+/// pass per seed is the difference between a snappy result and a visibly
+/// slow "Preparing results" screen. `extract()` is the one place that
+/// shares the grayscale conversion and texture pass across everything
+/// that needs them.
 class FeatureExtractor {
   const FeatureExtractor();
 
   SeedFeatures extract(SegmentedSeed seed) {
+    final gray = img.grayscale(seed.crop);
+
     final color = _colorFeatures(seed);
-    final texture = _textureFeatures(seed);
-    final damage = _damageIndicators(seed, color);
+    final texture = _textureFeatures(seed, gray);
+    final damage = _damageIndicators(seed, gray, color, texture);
 
     return SeedFeatures(
       geometry: seed.geometry,
@@ -31,7 +42,7 @@ class FeatureExtractor {
     double sumL = 0, sumA = 0, sumBLab = 0;
     int n = 0;
 
-    final rs = <double>[], gs = <double>[], bs = <double>[];
+    final rs = <double>[], gs = <double>[], bs = <double>[], hues = <double>[];
 
     for (var y = 0; y < seed.crop.height; y++) {
       for (var x = 0; x < seed.crop.width; x++) {
@@ -46,6 +57,7 @@ class FeatureExtractor {
         sumB += b;
 
         final hsv = _rgbToHsv(r, g, b);
+        hues.add(hsv[0]);
         sumH += hsv[0];
         sumS += hsv[1];
         sumV += hsv[2];
@@ -86,18 +98,14 @@ class FeatureExtractor {
     // Discoloration proxy: fraction of foreground pixels whose hue departs
     // more than 40 degrees from the seed's own mean hue — a crude but
     // honest "how uniform is this seed's color" signal, not a claim about
-    // what caused the variation.
+    // what caused the variation. Reuses the hues collected above instead
+    // of re-reading pixels and recomputing HSV a second time.
     final meanHue = sumH / n;
     int outliers = 0;
-    for (var y = 0; y < seed.crop.height; y++) {
-      for (var x = 0; x < seed.crop.width; x++) {
-        if (!seed.isForeground(x, y)) continue;
-        final p = seed.crop.getPixel(x, y);
-        final hsv = _rgbToHsv(p.r.toDouble(), p.g.toDouble(), p.b.toDouble());
-        var diff = (hsv[0] - meanHue).abs();
-        if (diff > 180) diff = 360 - diff;
-        if (diff > 40) outliers++;
-      }
+    for (final hue in hues) {
+      var diff = (hue - meanHue).abs();
+      if (diff > 180) diff = 360 - diff;
+      if (diff > 40) outliers++;
     }
 
     return ColorFeatures(
@@ -115,8 +123,7 @@ class FeatureExtractor {
     );
   }
 
-  TextureFeatures _textureFeatures(SegmentedSeed seed) {
-    final gray = img.grayscale(seed.crop);
+  TextureFeatures _textureFeatures(SegmentedSeed seed, img.Image gray) {
     final w = gray.width, h = gray.height;
 
     int edgePixels = 0;
@@ -167,17 +174,21 @@ class FeatureExtractor {
     );
   }
 
-  DamageIndicators _damageIndicators(SegmentedSeed seed, ColorFeatures color) {
-    final gray = img.grayscale(seed.crop);
+  DamageIndicators _damageIndicators(
+    SegmentedSeed seed,
+    img.Image gray,
+    ColorFeatures color,
+    TextureFeatures texture,
+  ) {
     int darkPixels = 0, holeCandidates = 0, foreground = 0;
-    final meanLuminance = <double>[];
+    double luminanceSum = 0;
 
     for (var y = 0; y < gray.height; y++) {
       for (var x = 0; x < gray.width; x++) {
         if (!seed.isForeground(x, y)) continue;
         foreground++;
         final l = img.getLuminance(gray.getPixel(x, y)).toDouble();
-        meanLuminance.add(l);
+        luminanceSum += l;
         if (l < 60) darkPixels++;
       }
     }
@@ -206,12 +217,11 @@ class FeatureExtractor {
       }
     }
 
-    final avgLuminance = meanLuminance.reduce((a, b) => a + b) / meanLuminance.length;
-    final crackRatio = _textureFeatures(seed).edgeDensity;
+    final avgLuminance = luminanceSum / foreground;
 
     return DamageIndicators(
       darkRegionRatio: darkPixels / foreground,
-      crackLikeEdgeRatio: crackRatio,
+      crackLikeEdgeRatio: texture.edgeDensity,
       holeRatio: (holeCandidates / foreground).clamp(0.0, 1.0),
       abnormalPigmentationScore:
           (color.discolorationRatio * 0.6 + (avgLuminance < 70 ? 0.4 : 0.0)).clamp(0.0, 1.0),

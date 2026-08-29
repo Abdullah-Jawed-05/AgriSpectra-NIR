@@ -2,7 +2,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image/image.dart' as img;
 
 import '../../application/device_manager.dart';
 import '../../application/scan_orchestrator.dart';
@@ -75,24 +74,20 @@ class _ScanFlowScreenState extends ConsumerState<ScanFlowScreen> {
     try {
       final file = await controller.takePicture();
       final bytes = await file.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-      if (decoded == null) {
-        setState(() {
-          _phase = _FlowPhase.analysisFailed;
-          _errorMessage = 'Could not read the captured image. Please try again.';
-        });
-        return;
-      }
 
       final orchestrator = ref.read(scanOrchestratorProvider);
       final nirDevice = ref.read(deviceManagerProvider.notifier).device;
 
+      // Decoding, along with the rest of the vision pipeline, happens on a
+      // background isolate inside orchestrator.analyze() — see
+      // ml/vision_pipeline.dart. Passing raw bytes here (rather than
+      // decoding on the UI isolate first) avoids doing that work twice.
       final result = await orchestrator.analyze(
-        image: decoded,
+        imageBytes: bytes,
         crop: widget.crop,
         nirDevice: nirDevice,
         cameraMetadata: {
-          'resolution': '${decoded.width}x${decoded.height}',
+          'resolution_preset': controller.resolutionPreset.name,
           'lens_direction': controller.description.lensDirection.name,
         },
         onProgress: (stage) {
@@ -240,10 +235,8 @@ class _AnalyzingView extends StatelessWidget {
   final AnalysisStage? stage;
 
   String get _label => switch (stage) {
-        AnalysisStage.checkingQuality => 'Checking image quality…',
-        AnalysisStage.detectingSeeds => 'Detecting and segmenting seeds…',
-        AnalysisStage.extractingFeatures => 'Extracting visual features…',
-        AnalysisStage.classifying => 'Scoring each seed…',
+        AnalysisStage.analyzingImage =>
+          'Analyzing image — detecting seeds and scoring each one…',
         AnalysisStage.readingNir => 'Reading NIR sensor…',
         AnalysisStage.fusing => 'Combining sensor evidence…',
         AnalysisStage.saving => 'Saving scan…',
