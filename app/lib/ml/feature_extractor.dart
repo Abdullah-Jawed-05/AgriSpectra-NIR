@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
@@ -11,21 +12,42 @@ import 'segmented_seed.dart';
 /// segmentation didn't already compute.
 ///
 /// Every sub-extractor here is written to walk each seed's cropped pixels
-/// exactly once. It's tempting to write these independently (grayscale
-/// conversion, texture, damage) since they're conceptually separate — but
-/// on a real device, with up to 50 seeds per scan, a second full pixel
-/// pass per seed is the difference between a snappy result and a visibly
-/// slow "Preparing results" screen. `extract()` is the one place that
-/// shares the grayscale conversion and texture pass across everything
-/// that needs them.
+/// a small, fixed number of times. It's tempting to write these
+/// independently (grayscale conversion, texture, damage) since they're
+/// conceptually separate — but on a real device, with up to 50 seeds per
+/// scan, extra full pixel passes per seed are the difference between a
+/// snappy result and a visibly slow "Preparing results" screen. `extract()`
+/// is the one place that shares the grayscale conversion and Sobel pass
+/// across everything that needs them.
+///
+/// The gradient math and hole detector here are written to match
+/// `ml/preprocessing/features.py` term for term (Sobel gradient magnitude,
+/// its edge threshold, border-flood-fill holes) — see that file's
+/// docstring and `seed_finder.dart`'s class doc for why.
 class FeatureExtractor {
   const FeatureExtractor();
 
+  /// A pixel counts as an "edge" once its Sobel gradient magnitude passes
+  /// this. Calibrated for the |Gx|+|Gy| scale a 3x3 Sobel kernel produces
+  /// (much larger than a simple forward-difference), matching the Python
+  /// pipeline's threshold exactly.
+  static const double _edgeGradientThreshold = 60;
+
+  static const List<int> _sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+  static const List<int> _sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
   SeedFeatures extract(SegmentedSeed seed) {
-    final gray = img.grayscale(seed.crop);
+    // img.grayscale() mutates its argument in place and returns the same
+    // object — without cloning first, `seed.crop` itself would desaturate
+    // here, and every color feature computed below (_colorFeatures reads
+    // seed.crop.getPixel for r/g/b) would see grayscale data instead of the
+    // seed's real color. This was a real bug: color features have been
+    // computed from already-grayscaled crops since the original MVP.
+    final gray = img.grayscale(seed.crop.clone());
+    final gradient = _sobelMagnitude(gray);
 
     final color = _colorFeatures(seed);
-    final texture = _textureFeatures(seed, gray);
+    final texture = _textureFeatures(seed, gray, gradient);
     final damage = _damageIndicators(seed, gray, color, texture);
 
     return SeedFeatures(
@@ -123,7 +145,55 @@ class FeatureExtractor {
     );
   }
 
-  TextureFeatures _textureFeatures(SegmentedSeed seed, img.Image gray) {
+  /// 3x3 Sobel gradient magnitude (|Gx| + |Gy|) over the whole crop, with
+  /// OpenCV's default BORDER_REFLECT_101 edge handling — the same
+  /// definition `cv2.Sobel` gives the Python pipeline. Deliberately
+  /// computed over every pixel (foreground and background) and only
+  /// *read* at foreground locations afterward, matching how the Python
+  /// side does it: a seed's edge pixels legitimately see gradient
+  /// contribution from the background they sit against, on both sides
+  /// identically.
+  Float32List _sobelMagnitude(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    final lum = Float32List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        lum[y * w + x] = img.getLuminance(gray.getPixel(x, y)).toDouble();
+      }
+    }
+
+    final out = Float32List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        double gx = 0, gy = 0;
+        var k = 0;
+        for (var dy = -1; dy <= 1; dy++) {
+          final ry = _reflect101(y + dy, h);
+          for (var dx = -1; dx <= 1; dx++) {
+            final rx = _reflect101(x + dx, w);
+            final v = lum[ry * w + rx];
+            gx += _sobelX[k] * v;
+            gy += _sobelY[k] * v;
+            k++;
+          }
+        }
+        out[y * w + x] = gx.abs() + gy.abs();
+      }
+    }
+    return out;
+  }
+
+  /// BORDER_REFLECT_101: reflects without repeating the edge sample, e.g.
+  /// for width 5, index -1 maps to 1, -2 maps to 2, 5 maps to 3.
+  int _reflect101(int i, int n) {
+    if (n == 1) return 0;
+    final period = 2 * (n - 1);
+    var m = i % period;
+    if (m < 0) m += period;
+    return m < n ? m : period - m;
+  }
+
+  TextureFeatures _textureFeatures(SegmentedSeed seed, img.Image gray, Float32List gradient) {
     final w = gray.width, h = gray.height;
 
     int edgePixels = 0;
@@ -138,15 +208,9 @@ class FeatureExtractor {
         final l = img.getLuminance(gray.getPixel(x, y));
         histogram[l.round().clamp(0, 255)]++;
 
-        final right = x + 1 < w && seed.isForeground(x + 1, y)
-            ? img.getLuminance(gray.getPixel(x + 1, y))
-            : l;
-        final down = y + 1 < h && seed.isForeground(x, y + 1)
-            ? img.getLuminance(gray.getPixel(x, y + 1))
-            : l;
-        final gradient = (l - right).abs() + (l - down).abs();
-        contrastSum += gradient;
-        if (gradient > 30) edgePixels++;
+        final g = gradient[y * w + x];
+        contrastSum += g;
+        if (g > _edgeGradientThreshold) edgePixels++;
       }
     }
 
@@ -180,7 +244,7 @@ class FeatureExtractor {
     ColorFeatures color,
     TextureFeatures texture,
   ) {
-    int darkPixels = 0, holeCandidates = 0, foreground = 0;
+    int darkPixels = 0, foreground = 0;
     double luminanceSum = 0;
 
     for (var y = 0; y < gray.height; y++) {
@@ -202,30 +266,65 @@ class FeatureExtractor {
       );
     }
 
-    // "Holes": small fully-enclosed background pockets strictly inside the
-    // bounding box (not touching its border) — a simple proxy without a
-    // full topology pass.
-    final w = seed.crop.width, h = seed.crop.height;
-    for (var y = 1; y < h - 1; y++) {
-      for (var x = 1; x < w - 1; x++) {
-        if (seed.isForeground(x, y)) continue;
-        final surroundedByForeground = seed.isForeground(x - 1, y) &&
-            seed.isForeground(x + 1, y) &&
-            seed.isForeground(x, y - 1) &&
-            seed.isForeground(x, y + 1);
-        if (surroundedByForeground) holeCandidates++;
-      }
-    }
-
+    final holePixels = _countHolePixels(seed);
     final avgLuminance = luminanceSum / foreground;
 
     return DamageIndicators(
       darkRegionRatio: darkPixels / foreground,
       crackLikeEdgeRatio: texture.edgeDensity,
-      holeRatio: (holeCandidates / foreground).clamp(0.0, 1.0),
+      holeRatio: (holePixels / foreground).clamp(0.0, 1.0),
       abnormalPigmentationScore:
           (color.discolorationRatio * 0.6 + (avgLuminance < 70 ? 0.4 : 0.0)).clamp(0.0, 1.0),
     );
+  }
+
+  /// Background pixels enclosed by foreground (topological holes — "small
+  /// enclosed voids," §13): flood-fill every background pixel reachable
+  /// (4-connected) from the crop's border, then any background pixel that
+  /// flood never reaches is an enclosed pocket. Seeding from the whole
+  /// border, not just one corner, matters — a shape that happens to touch
+  /// its own bounding-box corner would otherwise silently misclassify its
+  /// entire outside as "holes." Matches
+  /// `ml/preprocessing/features.py::_hole_ratio`.
+  int _countHolePixels(SegmentedSeed seed) {
+    final w = seed.crop.width, h = seed.crop.height;
+    final reached = Uint8List(w * h);
+    final queue = Uint32List(w * h);
+    var head = 0, tail = 0;
+
+    void trySeedPixel(int x, int y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return;
+      final idx = y * w + x;
+      if (reached[idx] != 0 || seed.isForeground(x, y)) return;
+      reached[idx] = 1;
+      queue[tail++] = idx;
+    }
+
+    for (var x = 0; x < w; x++) {
+      trySeedPixel(x, 0);
+      trySeedPixel(x, h - 1);
+    }
+    for (var y = 0; y < h; y++) {
+      trySeedPixel(0, y);
+      trySeedPixel(w - 1, y);
+    }
+
+    while (head < tail) {
+      final idx = queue[head++];
+      final x = idx % w, y = idx ~/ w;
+      trySeedPixel(x - 1, y);
+      trySeedPixel(x + 1, y);
+      trySeedPixel(x, y - 1);
+      trySeedPixel(x, y + 1);
+    }
+
+    var holes = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (!seed.isForeground(x, y) && reached[y * w + x] == 0) holes++;
+      }
+    }
+    return holes;
   }
 
   List<double> _rgbToHsv(double r, double g, double b) {

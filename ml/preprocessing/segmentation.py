@@ -1,11 +1,12 @@
 """Classical seed detection/segmentation for the Python training pipeline.
 
 Deliberately mirrors app/lib/ml/seed_finder.dart (Otsu threshold + connected
-components, both polarities tried, filtered by area fraction) so that
-features computed here for training and features computed on-device at
-inference time come from the same algorithm. If these two ever drift apart,
-a model trained here will not transfer to what the app actually extracts at
-runtime — keep them in sync deliberately, not accidentally.
+components, both polarities tried, filtered by area fraction, moment-based
+ellipse, traced-contour perimeter/hull) so that features computed here for
+training and features computed on-device at inference time come from the
+same algorithm. If these two ever drift apart, a model trained here will not
+transfer to what the app actually extracts at runtime — keep them in sync
+deliberately, not accidentally.
 """
 
 from __future__ import annotations
@@ -54,10 +55,45 @@ def _valid_components(mask: np.ndarray, image_area: int):
     return n_labels, labels, stats, centroids, valid
 
 
+def _moment_ellipse(component_mask: np.ndarray) -> tuple[float, float, float]:
+    """Equivalent-ellipse width/length/eccentricity from the mask's second
+    central moments — the same formula as _buildSegmentedSeed in
+    app/lib/ml/seed_finder.dart. Deliberately NOT cv2.fitEllipse: fitEllipse
+    fits a conic to the boundary *contour* (a different, harder-to-replicate
+    algorithm), whereas the moment-based equivalent ellipse is well-defined
+    for any mask, numerically simple, and trivial to keep identical on both
+    sides of the training/inference split.
+    """
+    m = cv2.moments(component_mask, binaryImage=True)
+    area = m["m00"]
+    if area <= 0:
+        return 0.0, 0.0, 0.0
+    cx, cy = m["m10"] / area, m["m01"] / area
+    mu20 = m["mu20"] / area
+    mu02 = m["mu02"] / area
+    mu11 = m["mu11"] / area
+
+    common = float(np.sqrt((mu20 - mu02) ** 2 + 4 * mu11**2))
+    lambda1 = max(0.0, (mu20 + mu02 + common) / 2)
+    lambda2 = max(0.0, (mu20 + mu02 - common) / 2)
+    length = 4 * np.sqrt(lambda1)
+    width = 4 * np.sqrt(lambda2)
+    eccentricity = float(np.sqrt(max(0.0, 1 - (lambda2 / lambda1)))) if lambda1 > 0 else 0.0
+    return float(width), float(length), eccentricity
+
+
 def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[SegmentedSeed]:
     h0, w0 = image_bgr.shape[:2]
     scale = min(1.0, working_max_dim / max(h0, w0))
-    image = cv2.resize(image_bgr, (int(w0 * scale), int(h0 * scale))) if scale < 1.0 else image_bgr
+    image = (
+        cv2.resize(
+            image_bgr,
+            (int(w0 * scale), int(h0 * scale)),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        if scale < 1.0
+        else image_bgr
+    )
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     dark_mask, light_mask = _otsu_binary(gray)
@@ -86,13 +122,7 @@ def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[Segme
         hull_area = cv2.contourArea(hull)
         convexity = float(np.clip(area / hull_area, 0, 1)) if hull_area > 0 else 0.0
 
-        if len(contour) >= 5:
-            (_, _), (minor, major), _ = cv2.fitEllipse(contour)
-            width_px, length_px = float(minor), float(major)
-        else:
-            width_px, length_px = float(w), float(h)
-
-        eccentricity = float(np.sqrt(max(0.0, 1 - (width_px / length_px) ** 2))) if length_px > 0 else 0.0
+        width_px, length_px, eccentricity = _moment_ellipse(component_mask)
         aspect_ratio = length_px / width_px if width_px > 0 else 0.0
 
         seeds.append(

@@ -24,6 +24,12 @@ abstract class SeedFinder {
 /// output worth computing twice. [DetectedSeed] records are still derived
 /// from the result (see [toDetectedSeeds]) to keep the two pipeline stages
 /// conceptually distinct for any future replacement of just this class.
+///
+/// Geometry here (perimeter/hull/contour, via [_traceContour]) and the
+/// gradient math in `feature_extractor.dart` are written to match
+/// `ml/preprocessing/segmentation.py` and `features.py` term for term — a
+/// model trained on the Python side is only valid on-device if this file
+/// computes the same features the same way (see ML_PIPELINE.md).
 class ClassicalCVSeedFinder implements SeedFinder {
   ClassicalCVSeedFinder({
     this.workingMaxDimension = 1100,
@@ -46,7 +52,12 @@ class ClassicalCVSeedFinder implements SeedFinder {
   @override
   List<SegmentedSeed> find(img.Image original) {
     final image = _downscale(original, workingMaxDimension);
-    final gray = img.grayscale(image);
+    // img.grayscale() mutates its argument in place and returns the same
+    // object — pass it a clone, or `image` itself desaturates, and every
+    // per-seed crop cut from it downstream (`_buildSegmentedSeed`'s `crop`,
+    // which color features are computed from) would carry grayscale pixel
+    // data with no color information left to extract.
+    final gray = img.grayscale(image.clone());
     final w = gray.width, h = gray.height;
 
     final luminance = Float32List(w * h);
@@ -95,9 +106,14 @@ class ClassicalCVSeedFinder implements SeedFinder {
 
   img.Image _downscale(img.Image image, int maxDim) {
     if (max(image.width, image.height) <= maxDim) return image;
+    // Explicit linear interpolation: this package's default is
+    // Interpolation.nearest, which is blockier than — and not what — the
+    // Python side's cv2.resize (default INTER_LINEAR) does. Nearest-
+    // neighbor here would bias the Otsu threshold and every downstream
+    // pixel-level feature away from what the training pipeline sees.
     return image.width >= image.height
-        ? img.copyResize(image, width: maxDim)
-        : img.copyResize(image, height: maxDim);
+        ? img.copyResize(image, width: maxDim, interpolation: img.Interpolation.linear)
+        : img.copyResize(image, height: maxDim, interpolation: img.Interpolation.linear);
   }
 
   double _otsuThreshold(Float32List luminance) {
@@ -222,7 +238,13 @@ class ClassicalCVSeedFinder implements SeedFinder {
     final centroidX = sumX / n;
     final centroidY = sumY / n;
 
-    // Second central moments -> orientation + major/minor axis lengths.
+    // Second central moments -> orientation + equivalent-ellipse axis
+    // lengths (§13). This moment-based ellipse — rather than fitting a
+    // conic to the boundary polygon (cv2.fitEllipse) — is the shared
+    // definition with the Python training pipeline
+    // (ml/preprocessing/segmentation.py): well-defined for any mask (even
+    // a handful of pixels), numerically simple, and trivial to keep
+    // identical on both sides. See ML_PIPELINE.md.
     double mu20 = 0, mu02 = 0, mu11 = 0;
     for (final idx in component.pixels) {
       final x = idx % component.imageWidth - component.minX - centroidX;
@@ -243,18 +265,23 @@ class ClassicalCVSeedFinder implements SeedFinder {
     final width = 4 * sqrt(lambda2);
     final eccentricity = lambda1 > 0 ? sqrt(max(0.0, 1 - (lambda2 / lambda1))) : 0.0;
 
-    final boundaryPixels = _boundaryPixels(mask, w, h);
-    final perimeter = boundaryPixels.length.toDouble();
+    // Traced boundary polygon (Moore-neighbor tracing) — used for
+    // perimeter, convex hull, and the stored/display contour. Replaces a
+    // cruder "count of boundary pixels" perimeter proxy and an
+    // angle-sorted point cloud that isn't a real contour for concave
+    // shapes. Mirrors cv2.findContours + cv2.arcLength on the Python side.
+    final traced = _traceContour(mask, w, h);
+    final perimeter = _polygonPerimeter(traced);
     final circularity = perimeter > 0 ? (4 * pi * n / (perimeter * perimeter)).clamp(0.0, 1.0) : 0.0;
 
-    final hull = _convexHull(boundaryPixels);
+    final hull = _convexHull(traced);
     final hullArea = _polygonArea(hull);
     final convexity = hullArea > 0 ? (n / hullArea).clamp(0.0, 1.0) : 0.0;
 
-    final contour = _orderedContour(boundaryPixels, centroidX, centroidY)
+    final contour = _thinContour(traced)
         .map((p) => Offset(
-              (p.dx + component.minX).toDouble(),
-              (p.dy + component.minY).toDouble(),
+              (p.x + component.minX).toDouble(),
+              (p.y + component.minY).toDouble(),
             ))
         .toList();
 
@@ -295,36 +322,80 @@ class ClassicalCVSeedFinder implements SeedFinder {
     );
   }
 
-  /// A mask pixel is on the boundary if it has at least one background
-  /// (or out-of-mask) 4-neighbor.
-  List<Point<int>> _boundaryPixels(Uint8List mask, int w, int h) {
-    final boundary = <Point<int>>[];
+  /// Moore-neighbor boundary tracing (Gonzalez & Woods) over an
+  /// 8-connected foreground mask that is a single connected component (the
+  /// only kind [_labelComponents] ever produces). Walks the outer boundary
+  /// clockwise starting from the first foreground pixel in row-major scan
+  /// order, and returns it as an ordered polygon — the same conceptual
+  /// object `cv2.findContours` gives the Python pipeline.
+  List<Point<int>> _traceContour(Uint8List mask, int w, int h) {
     bool fg(int x, int y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] != 0;
+
+    Point<int>? start;
+    outer:
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
-        if (!fg(x, y)) continue;
-        if (!fg(x - 1, y) || !fg(x + 1, y) || !fg(x, y - 1) || !fg(x, y + 1)) {
-          boundary.add(Point(x, y));
+        if (fg(x, y)) {
+          start = Point(x, y);
+          break outer;
         }
       }
+    }
+    if (start == null) return const [];
+
+    // Clockwise from North: N, NE, E, SE, S, SW, W, NW.
+    const dx = [0, 1, 1, 1, 0, -1, -1, -1];
+    const dy = [-1, -1, 0, 1, 1, 1, 0, -1];
+
+    final boundary = <Point<int>>[start];
+    var current = start;
+    // The scan-order start pixel's West neighbor is guaranteed background
+    // (or off-mask), so "arrived from the West" is a valid initial
+    // backtrack direction.
+    var backtrack = 6;
+    // Defensive bound: a correct trace revisits each boundary pixel at
+    // most a small constant number of times. This only matters if a mask
+    // ever violates the single-8-connected-component assumption.
+    final maxSteps = 8 * mask.length + 16;
+
+    for (var step = 0; step < maxSteps; step++) {
+      var found = false;
+      for (var i = 1; i <= 8; i++) {
+        final dir = (backtrack + i) % 8;
+        final nx = current.x + dx[dir];
+        final ny = current.y + dy[dir];
+        if (fg(nx, ny)) {
+          current = Point(nx, ny);
+          backtrack = (dir + 4) % 8; // opposite direction, from the new pixel's view
+          found = true;
+          break;
+        }
+      }
+      if (!found) break; // isolated pixel, no foreground neighbor
+      if (current == start) break; // closed the loop
+      boundary.add(current);
     }
     return boundary;
   }
 
-  List<Offset> _orderedContour(List<Point<int>> boundary, double cx, double cy) {
-    final sorted = [...boundary]
-      ..sort((a, b) =>
-          atan2(a.y - cy, a.x - cx).compareTo(atan2(b.y - cy, b.x - cx)));
-    // Thin to a manageable number of points for storage/rendering.
-    const maxPoints = 64;
-    if (sorted.length <= maxPoints) {
-      return sorted.map((p) => Offset(p.x.toDouble(), p.y.toDouble())).toList();
+  double _polygonPerimeter(List<Point<int>> polygon) {
+    if (polygon.length < 2) return 0;
+    double perimeter = 0;
+    for (var i = 0; i < polygon.length; i++) {
+      final a = polygon[i];
+      final b = polygon[(i + 1) % polygon.length];
+      perimeter += sqrt(pow((a.x - b.x).toDouble(), 2) + pow((a.y - b.y).toDouble(), 2));
     }
-    final stride = sorted.length / maxPoints;
-    return [
-      for (var i = 0; i < maxPoints; i++)
-        Offset(sorted[(i * stride).floor()].x.toDouble(), sorted[(i * stride).floor()].y.toDouble()),
-    ];
+    return perimeter;
+  }
+
+  /// Thin a traced contour to a manageable number of points for
+  /// storage/rendering.
+  List<Point<int>> _thinContour(List<Point<int>> traced) {
+    const maxPoints = 64;
+    if (traced.length <= maxPoints) return traced;
+    final stride = traced.length / maxPoints;
+    return [for (var i = 0; i < maxPoints; i++) traced[(i * stride).floor()]];
   }
 
   /// Andrew's monotone chain convex hull.

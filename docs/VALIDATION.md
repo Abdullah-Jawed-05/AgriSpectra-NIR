@@ -38,6 +38,18 @@ limitations" section is required output, not optional polish.
   multipliers reflect engineering judgment against the barley reference set,
   explicitly documented as such in the source. Treat any score it produces
   as illustrative, not measured.
+- **Those thresholds haven't been re-validated since the 2026-09-04 feature
+  parity fix** (`visionModelVersion` v0 → v0.2, see
+  [`ML_PIPELINE.md`](ML_PIPELINE.md) §3). Before that fix, color features
+  (`_highDiscoloration` and friends) were silently computed from an
+  accidentally desaturated crop, so `RuleBasedClassifier`'s color-based
+  branch was effectively inert — any hand-tuning that happened against V0's
+  actual behavior was tuning around dead code, not around real color
+  signal. Geometry/texture thresholds also now see meaningfully different
+  input distributions (real Sobel edges instead of a coarser forward-diff
+  gradient). Re-tuning against the real barley photos (or better, folding
+  this into Model V1 training) is the next honest step, not a retroactive
+  claim that V0's current thresholds are still well-calibrated.
 - **Single crop, single collection session.** All barley data came from one
   shoot, so `split_dataset.py` can only make an implicit-batch split — a V1
   trained on it will overstate its own accuracy (near-duplicate seeds leak

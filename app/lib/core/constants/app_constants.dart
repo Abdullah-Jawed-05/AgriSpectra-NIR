@@ -6,7 +6,14 @@ class AppVersions {
   AppVersions._();
 
   static const String appVersion = '0.1.0';
-  static const String visionModelVersion = 'agrivision-v0-rule-engine';
+
+  /// v0.2: seed_finder.dart/feature_extractor.dart geometry, texture, and
+  /// color computation were reworked for Python-pipeline parity — see
+  /// docs/ML_PIPELINE.md. Same rule-engine classification logic as v0, but
+  /// materially different underlying feature values, most notably a fixed
+  /// bug where color features were being computed from an accidentally
+  /// grayscaled crop.
+  static const String visionModelVersion = 'agrivision-v0.2-rule-engine';
   static const String nirModelVersion = 'agrinir-v0-simulated';
   static const String fusionModelVersion = 'agrifusion-v0-weighted';
 

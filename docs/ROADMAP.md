@@ -75,3 +75,12 @@ recorded here per that file's comment.
   gained `impurity_count` and `purity_ratio`; scans written before 0.2.0
   read those back as `0` / `1.0`. No database schema change
   (`database_schema_version` stays `1` — the affected column is JSON).
+- **vision_model_version agrivision-v0-rule-engine → agrivision-v0.2-rule-engine**
+  — `seed_finder.dart`/`feature_extractor.dart` reworked for Python-pipeline
+  feature parity (see [`ML_PIPELINE.md`](ML_PIPELINE.md) §3): proper
+  traced-contour perimeter, shared moment-based ellipse, real Sobel edges,
+  correct border-flood-fill holes. Also fixes a real bug (not a parity
+  issue) where color features were computed from a crop `img.grayscale()`
+  had silently desaturated in place. Same classification logic as v0, but
+  materially different feature values feeding it — historical `Scan` rows
+  keep whichever version they were written with (§26).
