@@ -17,6 +17,15 @@ class BatchStatistics {
 
   final Map<String, int> qualityClassCounts;
 
+  /// Detected objects classified as foreign matter rather than seeds. These
+  /// are excluded from every per-seed quality figure above and reported
+  /// separately (a batch-purity concern, not a seed-quality one).
+  final int impurityCount;
+
+  /// 0..1. seeds / (seeds + impurities) — the fraction of detected objects
+  /// that were actual seeds. 1.0 when nothing was detected.
+  final double purityRatio;
+
   const BatchStatistics({
     required this.seedsDetected,
     required this.seedsAccepted,
@@ -27,5 +36,7 @@ class BatchStatistics {
     required this.confidence,
     required this.scoreHistogram,
     required this.qualityClassCounts,
+    required this.impurityCount,
+    required this.purityRatio,
   });
 }

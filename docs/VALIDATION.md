@@ -7,11 +7,15 @@ the app's UI copy get ahead of what's actually been tested.
 
 ## Current status: pre-validation
 
-No formal validation has been run. There is no labeled dataset (see
-[`DATASET_GUIDE.md`](DATASET_GUIDE.md)), so Model V0
-(`app/lib/ml/rule_classifier.dart`) is a hand-tuned rule engine, not a
-trained-and-evaluated model. Everything below is what *will* be checked
-once V1 exists, listed now so the validation plan itself is reviewable.
+No formal validation has been run. Model V0
+(`app/lib/ml/rule_classifier.dart` + `app/lib/ml/impurity_detector.dart`)
+is a hand-tuned rule engine, not a trained-and-evaluated model. A first
+labelled dataset now exists — **one barley collection, ~158 images, five
+label folders (GOOD / DAMAGED / BROKEN / SHRIVELED / IMPURITIES), single
+session** (see [`DATASET_GUIDE.md`](DATASET_GUIDE.md)) — enough to train a
+first Model V1 for sanity-checking, not enough to support an accuracy
+claim. Everything below is what *will* be checked once V1 exists, listed
+now so the validation plan itself is reviewable.
 
 ## What §47 of the build spec requires before any accuracy claim
 
@@ -30,9 +34,22 @@ limitations" section is required output, not optional polish.
 ## Known limitations today (V0, rule engine)
 
 - **Thresholds are hand-tuned**, not fit to data. `RuleBasedClassifier`'s
-  constants (`_highDamageDarkRatio`, etc.) reflect engineering judgment
-  against a handful of reference seeds, explicitly documented as such in
-  the source. Treat any score it produces as illustrative, not measured.
+  constants (`_highDamageDarkRatio`, etc.) and `ImpurityDetector`'s outlier
+  multipliers reflect engineering judgment against the barley reference set,
+  explicitly documented as such in the source. Treat any score it produces
+  as illustrative, not measured.
+- **Single crop, single collection session.** All barley data came from one
+  shoot, so `split_dataset.py` can only make an implicit-batch split — a V1
+  trained on it will overstate its own accuracy (near-duplicate seeds leak
+  across the split). This is the first thing more data collection fixes.
+- **V0 impurity detection is population-relative and shape-only.** It flags
+  objects that are size/aspect outliers versus the rest of the batch; a
+  foreign object that happens to be barley-grain-sized and -shaped will be
+  missed, and an unusually large or misshapen real seed can be
+  false-flagged. It needs ≥5 detections to run at all.
+- **`broken` is never emitted by V0.** The rule engine has no reliable
+  single-seed heuristic for fragmentation; only the trained V1 will
+  classify it.
 - **Detection assumes a reasonably contrasting background.**
   `ClassicalCVSeedFinder` tries both light-foreground and dark-foreground
   Otsu polarities and picks whichever finds more plausible blobs, but a

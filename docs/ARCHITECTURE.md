@@ -89,14 +89,22 @@ Feature Extraction         (geometry, color in RGB/HSV/LAB, texture, damage heur
   ↓
 Visual Classifier (V0)      (rule-engine over features → class + score)
   ↓
-Batch Engine                (aggregate per-seed → batch statistics)
+Impurity Screen (V0)        (batch-relative size/shape outlier → IMPURITIES)
+  ↓
+Batch Engine                (aggregate seeds → quality stats; impurities → purity metric)
   ↓
 Result
 ```
 
+Barley quality classes: `good`, `damaged` (hull compromised; also where the
+few hull-missing seeds go), `broken`, `shriveled`. `impurities` is a fifth
+class the classifier can emit but it means "not a seed" — the batch engine
+keeps it out of the quality figures and reports it as batch purity instead.
+
 Model V0 is a **rule engine**, not a trained model: thresholds on geometry/
-color/texture features tuned against a handful of labeled reference seeds.
-This exists specifically so the full pipeline is provably correct end-to-end
+color/texture features tuned against the barley reference set, plus a
+batch-relative outlier rule for impurities (`impurity_detector.dart`). This
+exists specifically so the full pipeline is provably correct end-to-end
 before any ML training happens — per §43 of the build prompt, proving the
 pipeline is the actual goal of V0, not accuracy.
 
@@ -153,7 +161,7 @@ changes (§26).
 | Horizon | Scope |
 |---|---|
 | **Hackathon** (now) | Everything in §11 MUST-HAVE below. |
-| **+12 weeks** | Real training dataset (hundreds, not tens, of labeled seeds across ≥2 crops); Model V1 (classical ML on extracted features) replaces the V0 rule engine; dataset collection mode (§44 of build prompt) shipped to field-test users; validation framework (§47) run across lighting/phone/lens combinations. |
+| **+12 weeks** | Grow the barley dataset past its current one-session state (multiple batches, ≥2 lighting setups, ≥2 phones); Model V1 (classical ML on extracted features) replaces the V0 rule engine + impurity heuristic for barley; dataset collection mode (§44 of build prompt) shipped to field-test users; validation framework (§47) run across lighting/phone/lens combinations. A second crop comes after barley V1 is validated, not before. |
 | **+6 months** | Model V2 (lightweight CNN / transfer learning) if the classical baseline plateaus; first physical NIR prototype (ESP32 + AS7265x) wired to `BluetoothNIRDevice`; paired image+NIR+germination data collection begins (Model V4/V5 groundwork). |
 | **Production** | Fusion model trained on real paired data; cloud sync as an opt-in, not a requirement; two-tier (camera-free vs. camera+NIR) packaging becomes a real business decision, not just an architectural placeholder. |
 
@@ -194,9 +202,12 @@ changes (§26).
   `leak_tracker` transitively. This is a debug-mode-only characteristic;
   `flutter run -d chrome` (real Chrome, incremental) or a release web build
   are the faster loops for actual development.
-- **No real seed image dataset exists yet.** V0 is deliberately a rule engine
-  so the pipeline can be demonstrated honestly without pretending a model was
-  trained on data that doesn't exist.
+- **The only labelled dataset is one barley collection** (~158 images, five
+  label folders, single session) — enough for a first Model V1 sanity pass,
+  not enough for an accuracy claim. V0 stays a rule engine (plus a
+  batch-relative size/shape outlier rule for impurities) so the pipeline is
+  demonstrated honestly rather than pretending a validated model exists. The
+  app is scoped to one crop (barley) to match.
 - **AS7265x is a discrete-channel sensor**, not a continuous spectrometer.
   The data model stores `wavelengths[]`/`values[]` arrays, not a continuous
   curve, and nothing in this codebase should be extended to fabricate

@@ -8,6 +8,7 @@ import '../domain/entities/processed_seed.dart';
 import 'batch_engine.dart';
 import 'feature_extractor.dart';
 import 'image_quality_gate.dart';
+import 'impurity_detector.dart';
 import 'rule_classifier.dart';
 import 'seed_finder.dart';
 
@@ -52,6 +53,7 @@ VisionPipelineResult runVisionPipeline(Uint8List imageBytes) {
   final seedFinder = ClassicalCVSeedFinder();
   const featureExtractor = FeatureExtractor();
   const classifier = RuleBasedClassifier();
+  const impurityDetector = ImpurityDetector();
   const batchEngine = BatchEngine();
 
   final image = img.decodeImage(imageBytes);
@@ -95,11 +97,11 @@ VisionPipelineResult runVisionPipeline(Uint8List imageBytes) {
     );
   }
 
-  final processed = <ProcessedSeed>[];
+  final classified = <ProcessedSeed>[];
   for (final seed in segmented) {
     final features = featureExtractor.extract(seed);
     final prediction = classifier.classify(features);
-    processed.add(ProcessedSeed(
+    classified.add(ProcessedSeed(
       seedId: seed.seedId,
       cropPng: img.encodePng(seed.crop),
       mask: seed.mask,
@@ -113,6 +115,10 @@ VisionPipelineResult runVisionPipeline(Uint8List imageBytes) {
       prediction: prediction,
     ));
   }
+
+  // Foreign-matter screening is a batch-relative call, so it runs once over
+  // the whole set of classified detections rather than per seed.
+  final processed = impurityDetector.flag(classified);
 
   final batchStats = batchEngine.aggregate(
     seedsDetected: segmented.length,

@@ -50,11 +50,7 @@ class _CropCard extends StatelessWidget {
   final VoidCallback onTap;
 
   IconData get _icon => switch (crop) {
-        Crop.wheat => Icons.grass,
-        Crop.rice => Icons.rice_bowl_outlined,
-        Crop.cotton => Icons.filter_drama_outlined,
-        Crop.maize => Icons.eco_outlined,
-        Crop.other => Icons.more_horiz,
+        Crop.barley => Icons.grass,
       };
 
   @override

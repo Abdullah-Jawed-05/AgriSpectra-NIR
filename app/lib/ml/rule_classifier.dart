@@ -35,7 +35,7 @@ class RuleBasedClassifier {
       final strength = ((features.damage.darkRegionRatio - _highDamageDarkRatio) * 2).clamp(0.0, 1.0);
       penalty += 22 * strength;
       evidence.add(EvidenceFactor(
-        description: 'Notable dark/discolored surface regions',
+        description: 'Notable dark or off-colour surface regions',
         supportsGoodQuality: false,
         weight: strength,
       ));
@@ -123,7 +123,7 @@ class RuleBasedClassifier {
 
     final score = (100 - penalty).clamp(0.0, 100.0);
 
-    final qualityClass = _classify(features, anomalies);
+    final qualityClass = _classify(anomalies);
 
     // Confidence reflects how far the score is from the decision boundary
     // and how much evidence was collected, not a calibrated probability —
@@ -141,20 +141,21 @@ class RuleBasedClassifier {
     );
   }
 
-  // Deliberately does not return QualityClass.broken or .shellFree: this
-  // rule engine has no real barley reference photos to derive a heuristic
-  // for "physically fragmented" or "hull missing" against, and guessing
-  // thresholds for those without any visual reference would be exactly
-  // the kind of fabricated-looking-precise behavior this project avoids
-  // elsewhere (§66 of the build spec). Model V1, trained on the labeled
-  // dataset that includes real examples of both, is what should actually
-  // learn to detect them — see docs/ML_PIPELINE.md.
-  QualityClass _classify(SeedFeatures f, List<String> anomalies) {
-    if (anomalies.contains('possible_insect_damage')) return QualityClass.insectDamaged;
-    if (f.damage.darkRegionRatio > _highDamageDarkRatio * 1.6) return QualityClass.moldSuspect;
-    if (anomalies.contains('color_inconsistency')) return QualityClass.discolored;
+  // Deliberately does not return QualityClass.broken or .impurities:
+  //  - "broken" (physically fragmented) has no reliable single-seed
+  //    heuristic without a visual reference to calibrate against; guessing
+  //    a threshold would be the fabricated-looking precision §66 of the
+  //    build spec warns against.
+  //  - "impurities" (foreign matter) is a batch-relative call, not a
+  //    per-seed one — it's handled by ImpurityDetector
+  //    (ml/impurity_detector.dart) after this classifier runs.
+  // Model V1, trained on the labelled barley dataset, is what should
+  // actually learn all five classes — see docs/ML_PIPELINE.md.
+  QualityClass _classify(List<String> anomalies) {
     if (anomalies.contains('shape_irregularity')) return QualityClass.shriveled;
-    if (anomalies.contains('possible_surface_cracking') ||
+    if (anomalies.contains('possible_insect_damage') ||
+        anomalies.contains('color_inconsistency') ||
+        anomalies.contains('possible_surface_cracking') ||
         anomalies.contains('dark_surface_regions')) {
       return QualityClass.damaged;
     }

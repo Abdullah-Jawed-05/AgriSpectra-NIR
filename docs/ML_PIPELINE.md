@@ -12,6 +12,7 @@ image_quality_gate.dart   — blur/exposure/glare/background/resolution gate
 seed_finder.dart          — Otsu threshold + connected components (detection+segmentation)
 feature_extractor.dart    — color/texture/damage features over each segmented seed
 rule_classifier.dart      — Model V0: hand-tuned rule engine, not trained
+impurity_detector.dart    — Model V0: batch-relative size/shape outlier -> IMPURITIES
 batch_engine.dart         — aggregates per-seed predictions into batch statistics
 ```
 

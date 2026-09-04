@@ -43,6 +43,8 @@ class ScanDao {
           'confidence': scan.batchStatistics.confidence,
           'score_histogram': scan.batchStatistics.scoreHistogram,
           'quality_class_counts': scan.batchStatistics.qualityClassCounts,
+          'impurity_count': scan.batchStatistics.impurityCount,
+          'purity_ratio': scan.batchStatistics.purityRatio,
         }),
         'fusion_result': encodeJson(scan.fusionResult.toJson()),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -109,6 +111,9 @@ class ScanDao {
         scoreHistogram: (batchJson['score_histogram'] as List).cast<int>(),
         qualityClassCounts:
             (batchJson['quality_class_counts'] as Map).cast<String, int>(),
+        // Defaults keep scans written before analysis_version 0.2.0 readable.
+        impurityCount: batchJson['impurity_count'] as int? ?? 0,
+        purityRatio: (batchJson['purity_ratio'] as num?)?.toDouble() ?? 1.0,
       ),
       fusionResult: FusionResult(
         assessmentId: fusionJson['assessment_id'] as String,

@@ -9,7 +9,10 @@ class AppVersions {
   static const String visionModelVersion = 'agrivision-v0-rule-engine';
   static const String nirModelVersion = 'agrinir-v0-simulated';
   static const String fusionModelVersion = 'agrifusion-v0-weighted';
-  static const String analysisVersion = '0.1.0';
+
+  /// 0.2.0: batch taxonomy scoped to barley (good/damaged/broken/shriveled
+  /// /impurities); BatchStatistics gained impurity_count + purity_ratio.
+  static const String analysisVersion = '0.2.0';
   static const int nirProtocolVersion = 1;
   static const String databaseSchemaVersion = '1';
 }
@@ -24,15 +27,14 @@ class ScanLimits {
   static const double minAcceptableQualityScore = 0.55;
 }
 
-enum Crop { wheat, rice, cotton, maize, other }
+/// Barley is the only crop AgriSpectra currently has a labelled dataset for.
+/// The enum (and the crop-selection screen that renders it) stay in place as
+/// the seam for adding crops back once each has its own data + tuned model.
+enum Crop { barley }
 
 extension CropLabel on Crop {
   String get label => switch (this) {
-        Crop.wheat => 'Wheat',
-        Crop.rice => 'Rice',
-        Crop.cotton => 'Cotton',
-        Crop.maize => 'Maize',
-        Crop.other => 'Other',
+        Crop.barley => 'Barley',
       };
 
   String get storageKey => name;

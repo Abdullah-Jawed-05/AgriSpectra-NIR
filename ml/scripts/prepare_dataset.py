@@ -6,7 +6,7 @@ Accepts two input layouts, auto-detected per crop:
     raw/<crop>/<batch_id>/<label>/<image files>.jpg    (3-level, explicit batches)
     raw/<crop>/<label>/<image files>.jpg                (2-level, no batch folder)
 
-e.g. raw/wheat/batch_2026-08-01_farmA/GOOD/img001.jpg   (3-level)
+e.g. raw/barley/batch_2026-08-28_lot1/GOOD/img001.jpg   (3-level)
      raw/barley/DAMAGED/img002.jpg                       (2-level)
 
 The 2-level form is what you get from just sorting photos straight into
@@ -19,13 +19,18 @@ split_dataset.py can group-split properly (§17 of the build spec).
 
 `label` should be one of the QualityClass storage keys in
 app/lib/domain/value_objects/quality_class.dart (GOOD, DAMAGED, BROKEN,
-DISCOLORED, SHRIVELED, SHELL_FREE, MOLD_SUSPECT, INSECT_DAMAGED, UNKNOWN)
-— these are labels a human assigned by looking at the seed, not a claim
-about germination (§15/§16 of the build spec; do not repurpose this
-pipeline to output germination predictions without real lab ground truth
-wired through a different label column). Folder names are matched
-case-insensitively with spaces/hyphens normalized to underscores, so
-"Shell Free", "shell-free", and "SHELL_FREE" all resolve to the same label.
+SHRIVELED, IMPURITIES, UNKNOWN) — these are labels a human assigned by
+looking at the seed, not a claim about germination (§15/§16 of the build
+spec; do not repurpose this pipeline to output germination predictions
+without real lab ground truth wired through a different label column).
+Folder names are matched case-insensitively with spaces/hyphens normalized
+to underscores, so "Impurities", "impurities" and "IMPURITIES" all resolve
+to the same label.
+
+IMPURITIES is foreign matter (stones, chaff, other-crop seeds), not a seed.
+It's an ordinary training label here — the model should learn to output it.
+Separating it from per-seed quality aggregation is the app's job
+(batch_engine.dart), not this script's.
 
 Usage:
     python prepare_dataset.py --raw-dir raw/ --out dataset_v0.1/
@@ -49,11 +54,8 @@ VALID_LABELS = {
     "GOOD",
     "DAMAGED",
     "BROKEN",
-    "DISCOLORED",
     "SHRIVELED",
-    "SHELL_FREE",
-    "MOLD_SUSPECT",
-    "INSECT_DAMAGED",
+    "IMPURITIES",
     "UNKNOWN",
 }
 

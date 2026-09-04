@@ -81,7 +81,7 @@ class _ResultBody extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '${scan.numberOfSeeds} seeds analyzed · ${_modeLabel(scan.fusionResult.mode)}',
+            '${scan.batchStatistics.seedsAccepted} seeds analyzed · ${_modeLabel(scan.fusionResult.mode)}',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -201,6 +201,12 @@ class _BreakdownCard extends StatelessWidget {
               _Row(label: 'NIR enhancement', value: 'unavailable', muted: true),
             _Row(label: 'Batch uniformity', value: '${(stats.uniformity * 100).round()}%'),
             _Row(label: 'Visible anomalies', value: '${stats.anomalyCount} seeds'),
+            _Row(
+              label: 'Batch purity',
+              value: '${(stats.purityRatio * 100).round()}%'
+                  '${stats.impurityCount > 0 ? ' · ${stats.impurityCount} non-seed' : ''}',
+              muted: stats.impurityCount == 0,
+            ),
             _Row(label: 'Rejected (unusable)', value: '${stats.seedsRejected}'),
             if (!scan.nirAvailable) ...[
               const Divider(height: AppSpacing.xl),

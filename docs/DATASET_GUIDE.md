@@ -14,32 +14,49 @@ than like seeds from a different batch (same lighting, same background,
 same physical seed lot). Treating rows as independent when they're not is
 exactly the leakage §17 of the original build spec warns about.
 
+## Scope: barley only (for now)
+
+AgriSpectra currently has one labelled crop — barley — so that's the only
+`Crop` the app offers and the only crop this pipeline is exercised against.
+The `<crop>` directory level below stays in the layout (and the `Crop` enum
+stays in the app) as the seam for adding crops back once each has its own
+data and a tuned model.
+
 ## Directory structure for `prepare_dataset.py`
 
-Two layouts work, auto-detected per crop:
+Two layouts work, auto-detected per crop.
+
+**3-level** (explicit collection batches — use this once you're shooting
+across multiple sessions/setups):
 
 ```
 raw/
-├── wheat/                            (3-level: explicit batches)
-│   ├── batch_2026-08-01_farmA/
-│   │   ├── GOOD/*.jpg
-│   │   ├── DAMAGED/*.jpg
-│   │   └── DISCOLORED/*.jpg
-│   └── batch_2026-08-03_farmB/
-│       └── ...
-└── barley/                           (2-level: no batch folder)
+└── barley/
+    ├── batch_2026-08-28_lot1/
+    │   ├── GOOD/*.jpg
+    │   ├── DAMAGED/*.jpg
+    │   └── BROKEN/*.jpg
+    └── batch_2026-09-03_lot2/
+        └── ...
+```
+
+**2-level** (just sort photos straight into per-label folders — fine for an
+early sanity pass; every image under the crop becomes one implicit batch):
+
+```
+raw/
+└── barley/
     ├── GOOD/*.jpg
     ├── DAMAGED/*.jpg
     ├── BROKEN/*.jpg
-    └── ...
+    ├── SHRIVELED/*.jpg
+    └── IMPURITIES/*.jpg
 ```
 
-The 2-level form (just sort photos straight into per-label folders) is
-fine for an early sanity-check pass or when everything really did come
-from one shoot — `prepare_dataset.py` treats all of a crop's images as one
-implicit batch in that case. Switch to the 3-level form once you're
-collecting across multiple sessions/setups deliberately, so splitting can
-group by batch properly (see below).
+The barley reference set that exists today is a 2-level collection (five
+label folders, one shoot) — `prepare_dataset.py` treats it as a single
+implicit batch, which is why the split can't yet truly separate train from
+test (see Splitting, and `docs/VALIDATION.md`).
 
 - One image = one photographed group of seeds (10–50, matching the app's
   capture guidance in `app/lib/presentation/screens/scan_flow_screen.dart`),
@@ -47,24 +64,37 @@ group by batch properly (see below).
   — either way, `prepare_dataset.py` re-detects seeds in each image itself,
   so both work.
 - `label` folders use the `QualityClass` storage keys from
-  `app/lib/domain/value_objects/quality_class.dart`. Current set, refined
-  against a real barley reference collection:
+  `app/lib/domain/value_objects/quality_class.dart`. Current set, matching
+  the labelled folders of the barley reference collection:
 
   | Key | Meaning |
   |---|---|
   | `GOOD` | no defects observed (includes what might otherwise be called "premium"/"perfect" — score, not a separate class, carries that gradation) |
-  | `DAMAGED` | hull/shell compromised but the seed may still be viable |
+  | `DAMAGED` | hull/shell compromised but the seed may still be viable. **Also where hull-missing ("shell-free") seeds go** — there were too few to justify a separate class |
   | `BROKEN` | physically fragmented (e.g. cut/split in half) — an observable physical state, not itself a germination claim, but practically implies non-viability |
-  | `DISCOLORED` | abnormal pigmentation |
   | `SHRIVELED` | shrunken/wrinkled appearance (also where a purely visual "looks dead" call belongs — see the note below) |
-  | `SHELL_FREE` | hull missing entirely, seed exposed |
-  | `MOLD_SUSPECT` | visible fungal-like growth |
-  | `INSECT_DAMAGED` | holes/boring consistent with insect damage |
-  | `UNKNOWN` | doesn't fit a specific category |
+  | `IMPURITIES` | **not a seed** — foreign matter (stones, chaff, stems, other-crop seeds). A valid training label, but the app keeps it out of per-seed quality stats and reports it as a batch-purity figure instead (see below) |
+  | `UNKNOWN` | doesn't fit a specific category. Internal fallback — not a folder you should normally be sorting into |
 
   Folder names are matched case-insensitively with spaces/hyphens
-  normalized to underscores, so `Shell Free`, `shell-free`, and
-  `SHELL_FREE` all land on the same label.
+  normalized to underscores, so `Impurities`, `impurities`, and
+  `IMPURITIES` all land on the same label.
+
+  Removed from the earlier taxonomy: `DISCOLORED`, `SHELL_FREE`,
+  `MOLD_SUSPECT`, `INSECT_DAMAGED` — no barley data was collected for them.
+  Old scans stored with those keys load back as `UNKNOWN`.
+
+### How `IMPURITIES` is treated
+
+Foreign matter is a *batch-purity* concern, not a *seed-quality* one, so
+the two are kept separate:
+
+- **Training** — `IMPURITIES` is an ordinary label. `prepare_dataset.py`
+  accepts the folder and the trained model learns to output the class.
+- **In the app** — any detection classified `IMPURITIES` (by the trained
+  model, or by `impurity_detector.dart`'s size/shape outlier rule in V0) is
+  excluded from batch score / uniformity / anomaly count, and surfaced as
+  `BatchStatistics.impurityCount` + `purityRatio` on the result screen.
 - These are **visual-quality labels a human assigned by looking at the
   seed**, not germination outcomes. Deliberately no `DEAD`/`ALIVE` label:
   a photo alone can't establish that, only a real germination test can

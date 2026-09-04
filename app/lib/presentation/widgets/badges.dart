@@ -46,16 +46,11 @@ class QualityClassBadge extends StatelessWidget {
 
   Color get _color => switch (qualityClass) {
         QualityClass.good => AppColors.good,
-        QualityClass.damaged ||
-        QualityClass.discolored ||
-        QualityClass.shriveled ||
-        QualityClass.shellFree =>
-          AppColors.moderate,
-        QualityClass.broken ||
-        QualityClass.moldSuspect ||
-        QualityClass.insectDamaged =>
-          AppColors.low,
-        QualityClass.unknown => AppColors.inkFaint,
+        QualityClass.damaged || QualityClass.shriveled => AppColors.moderate,
+        QualityClass.broken => AppColors.low,
+        // Impurities is foreign matter, not a quality grade — render it
+        // neutrally rather than on the good/moderate/low scale.
+        QualityClass.impurities || QualityClass.unknown => AppColors.inkFaint,
       };
 
   @override

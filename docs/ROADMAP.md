@@ -11,15 +11,23 @@ scoring, local persistence + history, the NIR abstraction wired to
 part of. See git history / the app's screens for current status —
 this roadmap doesn't restate a checklist that the code already shows.
 
+## Now / next
+
+- A first labelled **barley** dataset exists (~158 images, five folders:
+  GOOD / DAMAGED / BROKEN / SHRIVELED / IMPURITIES; one collection session).
+  App + pipeline are scoped to barley to match — see
+  [`DATASET_GUIDE.md`](DATASET_GUIDE.md).
+- Train Model V1 for barley (`ml/training/train_baseline.py`) and replace
+  `RuleBasedClassifier` + `ImpurityDetector` as the app's default
+  classifier, keeping both available as a fallback if the trained model is
+  missing/corrupt (§58 error handling).
+
 ## +12 weeks
 
-- Collect a real labeled dataset per [`DATASET_GUIDE.md`](DATASET_GUIDE.md)
-  — target: multiple batches (not just multiple images) per crop, across
-  at least 2 crops, ideally 2+ lighting setups and 2+ phones.
-- Train Model V1 (`ml/training/train_baseline.py`) and replace
-  `RuleBasedClassifier` as the app's default classifier, keeping the rule
-  engine available as a fallback if the trained model is missing/corrupt
-  (§58 error handling).
+- Grow the barley dataset past one session: multiple real collection
+  batches, ideally 2+ lighting setups and 2+ phones, so the train/test
+  split can actually separate them.
+- Add a second crop only once barley V1 is validated.
 - Ship the dataset-collection mode (§44 of the build spec) so future data
   collection doesn't depend on manually organizing folders.
 - Run the validation sweep in [`VALIDATION.md`](VALIDATION.md) and publish
@@ -54,3 +62,16 @@ this roadmap doesn't restate a checklist that the code already shows.
 Laboratory-certified validation, commercial regulatory certification, and
 large-scale cultivar fingerprinting are FUTURE-tier (§67) — no target
 timeframe until the production-phase items above are real.
+
+## Version log
+
+`AppVersions` (`app/lib/core/constants/app_constants.dart`) — bump reasons
+recorded here per that file's comment.
+
+- **analysis_version 0.1.0 → 0.2.0** — quality taxonomy scoped to barley
+  (`good / damaged / broken / shriveled / impurities`; removed
+  `discolored / shell_free / mold_suspect / insect_damaged`). `Crop`
+  narrowed to `barley`. `BatchStatistics` / the `batch_statistics` JSON
+  gained `impurity_count` and `purity_ratio`; scans written before 0.2.0
+  read those back as `0` / `1.0`. No database schema change
+  (`database_schema_version` stays `1` — the affected column is JSON).
