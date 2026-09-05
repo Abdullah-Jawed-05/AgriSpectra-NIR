@@ -27,7 +27,18 @@ this roadmap doesn't restate a checklist that the code already shows.
 - Grow the barley dataset past one session: multiple real collection
   batches, ideally 2+ lighting setups and 2+ phones, so the train/test
   split can actually separate them.
-- Add a second crop only once barley V1 is validated.
+- Add a second crop only once barley V1 is validated. Candidate data
+  source when that time comes: [Roboflow "seed" dataset](https://universe.roboflow.com/projects-vclkw/seed-qysqx)
+  (CC BY 4.0, ~7,707 images, object-detection format — bounding boxes, not
+  pre-cropped seeds). 8 classes: Good/Bad × Black Channa, Kabuli Chana,
+  Rajma, Soya. None of these are barley and the labels are a coarser
+  binary Good/Bad (not our 5-class taxonomy), so it needs real adaptation
+  work (crop each bounding box, run it through our own feature extractor,
+  probably per-crop binary models rather than folding into the 5-class
+  scheme) — not a drop-in dataset. Provenance is thin (no published
+  description, uploaded 2023, never updated) so treat its own labels as
+  unverified until spot-checked. Worth a second look only once a second
+  crop is actually on the table.
 - Ship the dataset-collection mode (§44 of the build spec) so future data
   collection doesn't depend on manually organizing folders.
 - Run the validation sweep in [`VALIDATION.md`](VALIDATION.md) and publish
