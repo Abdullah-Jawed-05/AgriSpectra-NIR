@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../value_objects/quality_class.dart';
 import 'quality_prediction.dart';
 import 'seed_features.dart';
 
@@ -23,6 +24,14 @@ class SeedResult {
   final double confidence;
   final List<String> anomalies;
 
+  /// A human's confirmed-or-corrected label, from the "Make Our App
+  /// Better" review flow — distinct from [prediction], which is always
+  /// the model's own (possibly wrong) guess. Null until reviewed. This is
+  /// the ground truth `ml/scripts/prepare_dataset.py` actually wants;
+  /// [prediction] is not a substitute for it.
+  final QualityClass? verifiedLabel;
+  final DateTime? verifiedAt;
+
   const SeedResult({
     required this.seedId,
     required this.scanId,
@@ -32,5 +41,20 @@ class SeedResult {
     required this.prediction,
     required this.confidence,
     required this.anomalies,
+    this.verifiedLabel,
+    this.verifiedAt,
   });
+
+  SeedResult copyWith({QualityClass? verifiedLabel, DateTime? verifiedAt}) => SeedResult(
+        seedId: seedId,
+        scanId: scanId,
+        cropPng: cropPng,
+        segmentation: segmentation,
+        visualFeatures: visualFeatures,
+        prediction: prediction,
+        confidence: confidence,
+        anomalies: anomalies,
+        verifiedLabel: verifiedLabel ?? this.verifiedLabel,
+        verifiedAt: verifiedAt ?? this.verifiedAt,
+      );
 }

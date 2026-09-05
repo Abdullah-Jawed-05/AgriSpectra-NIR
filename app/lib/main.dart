@@ -8,6 +8,7 @@ import 'database/app_database.dart';
 import 'presentation/screens/crop_selection_screen.dart';
 import 'presentation/screens/history_screen.dart';
 import 'presentation/screens/home_screen.dart';
+import 'presentation/screens/improve_app_screen.dart';
 import 'presentation/screens/nir_device_screen.dart';
 import 'presentation/screens/result_screen.dart';
 import 'presentation/screens/scan_flow_screen.dart';
@@ -47,6 +48,7 @@ final _router = GoRouter(
       ),
     ),
     GoRoute(path: '/history', builder: (context, state) => const HistoryScreen()),
+    GoRoute(path: '/improve', builder: (context, state) => const ImproveAppScreen()),
     GoRoute(path: '/nir', builder: (context, state) => const NirDeviceScreen()),
     GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
   ],

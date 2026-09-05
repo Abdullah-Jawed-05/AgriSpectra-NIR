@@ -13,3 +13,10 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 final scanRepositoryProvider = Provider<ScanRepository>((ref) {
   return ScanRepository(ref.watch(appDatabaseProvider));
 });
+
+/// Seeds nobody has reviewed in "Make Our App Better" yet — shown as a
+/// nudge on the home screen. `autoDispose` so it re-queries (rather than
+/// showing a stale count) each time the home screen is revisited.
+final unverifiedSeedCountProvider = FutureProvider.autoDispose<int>((ref) {
+  return ref.watch(scanRepositoryProvider).unverifiedSeedCount();
+});

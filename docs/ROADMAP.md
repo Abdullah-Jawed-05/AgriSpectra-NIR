@@ -26,7 +26,10 @@ this roadmap doesn't restate a checklist that the code already shows.
 
 - Grow the barley dataset past one session: multiple real collection
   batches, ideally 2+ lighting setups and 2+ phones, so the train/test
-  split can actually separate them.
+  split can actually separate them. The dataset-collection mode below
+  (shipped 2026-09-05) is what actually does this going forward — one
+  scan-day = one batch, automatically, once seeds get reviewed in "Make
+  Our App Better."
 - Add a second crop only once barley V1 is validated. Candidate data
   source when that time comes: [Roboflow "seed" dataset](https://universe.roboflow.com/projects-vclkw/seed-qysqx)
   (CC BY 4.0, ~7,707 images, object-detection format — bounding boxes, not
@@ -39,8 +42,13 @@ this roadmap doesn't restate a checklist that the code already shows.
   description, uploaded 2023, never updated) so treat its own labels as
   unverified until spot-checked. Worth a second look only once a second
   crop is actually on the table.
-- Ship the dataset-collection mode (§44 of the build spec) so future data
-  collection doesn't depend on manually organizing folders.
+- ~~Ship the dataset-collection mode (§44)~~ — done 2026-09-05, shaped
+  around actual usage rather than a separate capture flow: every scan's
+  seeds are saved unverified by default (no upfront labeling — that would
+  defeat normal scanning), and "Make Our App Better" (home screen) is
+  where anyone using the app confirms or corrects the model's guess at
+  their own pace. See [`DATASET_GUIDE.md`](DATASET_GUIDE.md)'s "In-app
+  collection" section.
 - Run the validation sweep in [`VALIDATION.md`](VALIDATION.md) and publish
   real numbers there instead of "pre-validation."
 

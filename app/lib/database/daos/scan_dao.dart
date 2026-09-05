@@ -59,6 +59,8 @@ class ScanDao {
           'prediction': encodeJson(result.prediction.toJson()),
           'confidence': result.confidence,
           'anomalies': encodeJson(result.anomalies),
+          'verified_label': result.verifiedLabel?.storageKey,
+          'verified_at': result.verifiedAt?.toIso8601String(),
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
@@ -135,6 +137,67 @@ class ScanDao {
     await _db.delete('scans', where: 'scan_id = ?', whereArgs: [scanId]);
   }
 
+  /// Records a human's confirmed-or-corrected label for one seed — the
+  /// "Make Our App Better" review flow. Deliberately a targeted UPDATE
+  /// rather than re-running [insertScan]: verification happens long after
+  /// the scan that produced the seed, potentially by a different session
+  /// entirely, and touching only these two columns keeps everything else
+  /// about that seed row (and the rest of its scan) untouched.
+  Future<void> verifySeed(String seedId, QualityClass label) async {
+    await _db.update(
+      'seed_results',
+      {
+        'verified_label': label.storageKey,
+        'verified_at': DateTime.now().toIso8601String(),
+      },
+      where: 'seed_id = ?',
+      whereArgs: [seedId],
+    );
+  }
+
+  /// Seeds nobody has reviewed yet, oldest-captured first (so a review
+  /// backlog clears in the order it was created), across every past *and*
+  /// future scan — every seed starts unverified by default. Joins against
+  /// `scans` for the crop name and capture date, which "Make Our App
+  /// Better" needs for context and a training export needs for grouping.
+  Future<List<SeedReviewItem>> unverifiedSeeds({int limit = 200}) async {
+    final rows = await _db.rawQuery(
+      '''
+      SELECT sr.seed_id, sr.scan_id, sr.crop_png, sr.prediction, s.crop, s.timestamp
+      FROM seed_results sr
+      JOIN scans s ON s.scan_id = sr.scan_id
+      WHERE sr.verified_label IS NULL
+      ORDER BY s.timestamp ASC
+      LIMIT ?
+      ''',
+      [limit],
+    );
+    return rows.map(SeedReviewItem._fromRow).toList();
+  }
+
+  Future<int> unverifiedSeedCount() async {
+    final rows = await _db.rawQuery(
+      'SELECT COUNT(*) AS c FROM seed_results WHERE verified_label IS NULL',
+    );
+    return Sqflite.firstIntValue(rows) ?? 0;
+  }
+
+  /// Every human-verified seed, for the training-data export — this is the
+  /// ground truth `ml/scripts/prepare_dataset.py` actually wants, not
+  /// [SeedResult.prediction].
+  Future<List<VerifiedSeedExport>> verifiedSeeds() async {
+    final rows = await _db.rawQuery(
+      '''
+      SELECT sr.seed_id, sr.crop_png, sr.verified_label, s.crop, s.timestamp
+      FROM seed_results sr
+      JOIN scans s ON s.scan_id = sr.scan_id
+      WHERE sr.verified_label IS NOT NULL
+      ORDER BY s.timestamp ASC
+      ''',
+    );
+    return rows.map(VerifiedSeedExport._fromRow).toList();
+  }
+
   SeedResult _seedResultFromRow(Map<String, Object?> row) {
     final featuresJson = decodeJsonMap(row['visual_features'] as String);
     final predictionJson = decodeJsonMap(row['prediction'] as String);
@@ -161,6 +224,10 @@ class ScanDao {
       ),
       confidence: (row['confidence'] as num).toDouble(),
       anomalies: (decodeJsonList(row['anomalies'] as String)).cast<String>(),
+      verifiedLabel: (row['verified_label'] as String?) == null
+          ? null
+          : QualityClassLabel.fromStorageKey(row['verified_label'] as String),
+      verifiedAt: (row['verified_at'] as String?) == null ? null : DateTime.parse(row['verified_at'] as String),
     );
   }
 
@@ -250,5 +317,68 @@ class ScanSummary {
         numberOfSeeds: row['number_of_seeds'] as int,
         batchScore: (row['batch_score'] as num).toDouble(),
         nirAvailable: (row['nir_available'] as int) == 1,
+      );
+}
+
+/// One row for the "Make Our App Better" review queue — just enough to
+/// show the crop image and the model's own guess, not the full [SeedResult]
+/// (visual features, segmentation) that screen has no use for.
+class SeedReviewItem {
+  final String seedId;
+  final String scanId;
+  final Uint8List cropPng;
+  final QualityClass predictedLabel;
+  final double predictedScore;
+  final String crop;
+  final DateTime scanTimestamp;
+
+  const SeedReviewItem({
+    required this.seedId,
+    required this.scanId,
+    required this.cropPng,
+    required this.predictedLabel,
+    required this.predictedScore,
+    required this.crop,
+    required this.scanTimestamp,
+  });
+
+  static SeedReviewItem _fromRow(Map<String, Object?> row) {
+    final predictionJson = decodeJsonMap(row['prediction'] as String);
+    return SeedReviewItem(
+      seedId: row['seed_id'] as String,
+      scanId: row['scan_id'] as String,
+      cropPng: row['crop_png'] as Uint8List,
+      predictedLabel: QualityClassLabel.fromStorageKey(predictionJson['quality_class'] as String),
+      predictedScore: (predictionJson['score'] as num).toDouble(),
+      crop: row['crop'] as String,
+      scanTimestamp: DateTime.parse(row['timestamp'] as String),
+    );
+  }
+}
+
+/// One row of confirmed ground truth, ready to write out as
+/// `raw/<crop>/<batch_id>/<label>/<seed_id>.png` for the training pipeline
+/// (see `app/lib/export/training_data_export.dart`).
+class VerifiedSeedExport {
+  final String seedId;
+  final Uint8List cropPng;
+  final QualityClass verifiedLabel;
+  final String crop;
+  final DateTime scanTimestamp;
+
+  const VerifiedSeedExport({
+    required this.seedId,
+    required this.cropPng,
+    required this.verifiedLabel,
+    required this.crop,
+    required this.scanTimestamp,
+  });
+
+  static VerifiedSeedExport _fromRow(Map<String, Object?> row) => VerifiedSeedExport(
+        seedId: row['seed_id'] as String,
+        cropPng: row['crop_png'] as Uint8List,
+        verifiedLabel: QualityClassLabel.fromStorageKey(row['verified_label'] as String),
+        crop: row['crop'] as String,
+        scanTimestamp: DateTime.parse(row['timestamp'] as String),
       );
 }

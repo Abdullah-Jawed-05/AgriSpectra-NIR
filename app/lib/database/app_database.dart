@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -57,7 +57,18 @@ class AppDatabase {
     return _instance!;
   }
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
+
+  /// Runs the real create statements against an arbitrary already-open
+  /// [Database] — e.g. an in-memory `sqflite_common_ffi` database in a
+  /// test — so DAO tests exercise the actual production schema instead of
+  /// a hand-duplicated copy that could silently drift from it.
+  @visibleForTesting
+  static Future<void> createSchemaForTesting(Database db) async {
+    for (final statement in _createStatements) {
+      await db.execute(statement);
+    }
+  }
 
   static const List<String> _createStatements = [
     '''
@@ -89,10 +100,13 @@ class AppDatabase {
       visual_features TEXT NOT NULL,
       prediction TEXT NOT NULL,
       confidence REAL NOT NULL,
-      anomalies TEXT NOT NULL
+      anomalies TEXT NOT NULL,
+      verified_label TEXT,
+      verified_at TEXT
     )
     ''',
     'CREATE INDEX idx_seed_results_scan_id ON seed_results(scan_id)',
+    'CREATE INDEX idx_seed_results_verified_label ON seed_results(verified_label)',
     '''
     CREATE TABLE spectral_measurements (
       scan_id TEXT PRIMARY KEY REFERENCES scans(scan_id) ON DELETE CASCADE,
@@ -113,7 +127,13 @@ class AppDatabase {
   ];
 
   /// Additive-only migrations, keyed by the version they upgrade *to*.
-  static const Map<int, List<String>> _migrations = {};
+  static const Map<int, List<String>> _migrations = {
+    2: [
+      'ALTER TABLE seed_results ADD COLUMN verified_label TEXT',
+      'ALTER TABLE seed_results ADD COLUMN verified_at TEXT',
+      'CREATE INDEX idx_seed_results_verified_label ON seed_results(verified_label)',
+    ],
+  };
 }
 
 String encodeJson(Object? value) => jsonEncode(value);

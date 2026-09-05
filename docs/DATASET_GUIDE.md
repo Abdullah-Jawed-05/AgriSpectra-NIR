@@ -14,6 +14,38 @@ than like seeds from a different batch (same lighting, same background,
 same physical seed lot). Treating rows as independent when they're not is
 exactly the leakage §17 of the original build spec warns about.
 
+## In-app collection ("Make Our App Better")
+
+As of 2026-09-05, the app itself is a data-collection path — no manual
+folder-sorting required to grow the dataset. It's built around how the app
+is actually used, not as a separate mode:
+
+- Every scan's seeds are stored **unverified** by default
+  (`seed_results.verified_label IS NULL`) — capturing an image never asks
+  the user anything; that would defeat normal scanning.
+- **"Make Our App Better"** (a home-screen entry, `app/lib/presentation/
+  screens/improve_app_screen.dart`) is where anyone using the app reviews
+  unverified seeds later, at their own pace: it shows the crop, the
+  model's own guess, and the 5 label buttons — confirm or correct with one
+  tap. This applies retroactively to every past scan too, not just future
+  ones.
+- The confirmed label (`verified_label`) is real ground truth. The model's
+  own `prediction` never was, and the two are stored separately —
+  `RuleBasedClassifier`/`ImpurityDetector` being wrong is exactly the case
+  this exists to catch.
+- **Export** (the share icon on that screen) zips every verified seed into
+  `<crop>/<batch_id>/<LABEL>/<seed_id>.png` — the exact layout
+  `prepare_dataset.py` wants — and hands it to the OS share sheet.
+  `batch_id` is derived from the scan's capture date (`app_YYYY-MM-DD`),
+  not entered by anyone: every day of app usage becomes its own collection
+  batch automatically, which is what actually lets `split_dataset.py` do a
+  real group split once enough days accumulate (see "What batch means"
+  above). Unzip the export straight into `ml/data/raw/barley/`.
+- Exports are always the *complete* verified set, not just what's new — no
+  export-state tracking to get out of sync. Replace your local
+  `ml/data/raw/barley/` wholesale with each new export rather than
+  merging by hand.
+
 ## Scope: barley only (for now)
 
 AgriSpectra currently has one labelled crop — barley — so that's the only

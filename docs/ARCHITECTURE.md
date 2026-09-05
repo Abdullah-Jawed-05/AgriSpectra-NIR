@@ -144,7 +144,8 @@ Scan
 
 SeedResult
  ├─ seed_id, scan_id, image_path, segmentation
- └─ visual_features, prediction, confidence, anomalies
+ ├─ visual_features, prediction, confidence, anomalies
+ └─ verified_label?, verified_at?  (human ground truth, §44 — see below)
 
 SpectralMeasurement          (future, table exists from day one)
  ├─ scan_id, device_id, timestamp
@@ -155,6 +156,13 @@ SpectralMeasurement          (future, table exists from day one)
 Raw measurements are never discarded (§33). Every prediction row records
 `model_version` — predictions are never silently overwritten when a model
 changes (§26).
+
+`verified_label`/`verified_at` are set by the "Make Our App Better" review
+flow (`app/lib/presentation/screens/improve_app_screen.dart`), never by
+the vision pipeline — they're the app's own dataset-collection mode (§44),
+turning every scan into potential training data without asking anything
+of the user at capture time. See `docs/DATASET_GUIDE.md`'s "In-app
+collection" section.
 
 ## 8. Roadmap
 

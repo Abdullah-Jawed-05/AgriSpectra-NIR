@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/device_manager.dart';
+import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/nir_device_info.dart';
 
@@ -12,6 +13,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final nirStatus = ref.watch(deviceManagerProvider);
+    final unverifiedCount = ref.watch(unverifiedSeedCountProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -62,6 +64,16 @@ class HomeScreen extends ConsumerWidget {
                 title: 'Scan History',
                 subtitle: 'Review past batches',
                 onTap: () => context.push('/history'),
+              ),
+              _MenuTile(
+                icon: Icons.auto_awesome_outlined,
+                title: 'Make Our App Better',
+                subtitle: unverifiedCount.when(
+                  data: (count) => count > 0 ? '$count seed${count == 1 ? '' : 's'} waiting for you to check' : 'All caught up',
+                  loading: () => 'Checking…',
+                  error: (_, _) => 'Verify past scan results',
+                ),
+                onTap: () => context.push('/improve'),
               ),
               _MenuTile(
                 icon: Icons.sensors,
