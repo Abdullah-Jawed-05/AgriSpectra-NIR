@@ -108,14 +108,21 @@ class ScanReportPdf {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              pw.Text('AgriSpectra', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: _accent, fontSize: 26)),
-              pw.SizedBox(height: 2),
-              pw.Text(
-                'Seed Batch Assessment · ${scan.crop.toUpperCase()}',
-                style: const pw.TextStyle(color: _inkMuted, fontSize: 12),
+              _mark(28),
+              pw.SizedBox(width: 8),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('AgriSpectra', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: _accent, fontSize: 26)),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Seed Batch Assessment · ${scan.crop.toUpperCase()}',
+                    style: const pw.TextStyle(color: _inkMuted, fontSize: 12),
+                  ),
+                ],
               ),
             ],
           ),
@@ -128,6 +135,36 @@ class ScanReportPdf {
             ],
           ),
         ],
+      );
+
+  /// The same seed-silhouette-plus-scan-band mark as
+  /// `app/lib/presentation/widgets/agrispectra_mark.dart`, redrawn against
+  /// `PdfGraphics`'s bottom-up coordinate space (note the flipped Y here
+  /// versus that file's top-down one) — one shared shape, two rendering
+  /// backends.
+  static pw.Widget _mark(double size) => pw.CustomPaint(
+        size: PdfPoint(size, size),
+        painter: (canvas, pdfSize) {
+          final w = pdfSize.x, h = pdfSize.y;
+          double px(double x) => w * x / 100;
+          double py(double y) => h * (1 - y / 100);
+
+          canvas
+            ..moveTo(px(50), py(14))
+            ..curveTo(px(71), py(30), px(71), py(70), px(50), py(90))
+            ..curveTo(px(29), py(70), px(29), py(30), px(50), py(14))
+            ..closePath()
+            ..setColor(_accent)
+            ..fillPath()
+            ..moveTo(px(50), py(14))
+            ..curveTo(px(71), py(30), px(71), py(70), px(50), py(90))
+            ..curveTo(px(29), py(70), px(29), py(30), px(50), py(14))
+            ..closePath()
+            ..clipPath()
+            ..setColor(_accentMuted)
+            ..drawRect(px(20), py(53), w * 0.6, h * 0.11)
+            ..fillPath();
+        },
       );
 
   static pw.Widget _summaryRow(Scan scan) {

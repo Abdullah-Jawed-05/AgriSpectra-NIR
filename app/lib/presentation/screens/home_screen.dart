@@ -6,6 +6,7 @@ import '../../application/device_manager.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/nir_device_info.dart';
+import '../widgets/agrispectra_mark.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -25,14 +26,20 @@ class HomeScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
                     children: [
-                      Text('AgriSpectra', style: Theme.of(context).textTheme.headlineLarge),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Seed quality screening',
-                        style: Theme.of(context).textTheme.bodyMedium,
+                      const AgriSpectraMark(size: 32),
+                      const SizedBox(width: AppSpacing.sm),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('AgriSpectra', style: Theme.of(context).textTheme.headlineLarge),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Seed quality screening',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -73,6 +80,7 @@ class HomeScreen extends ConsumerWidget {
                   loading: () => 'Checking…',
                   error: (_, _) => 'Verify past scan results',
                 ),
+                highlighted: true,
                 onTap: () => context.push('/improve'),
               ),
               _MenuTile(
@@ -197,6 +205,7 @@ class _MenuTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.highlighted = false,
   });
 
   final IconData icon;
@@ -204,16 +213,33 @@ class _MenuTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
+  /// Set for the one action that grows the dataset (§44) — a subtle
+  /// accent border, not a different shape or color scheme, so it reads as
+  /// "worth a look" without competing with the primary NEW SCAN button.
+  final bool highlighted;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Card(
+        shape: highlighted
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                side: const BorderSide(color: AppColors.accent, width: 1.5),
+              )
+            : null,
         child: ListTile(
           onTap: onTap,
-          leading: Icon(icon, color: AppColors.inkMuted),
+          leading: Icon(icon, color: highlighted ? AppColors.accent : AppColors.inkMuted),
           title: Text(title, style: Theme.of(context).textTheme.titleMedium),
-          subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+          subtitle: Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: highlighted ? AppColors.accent : null,
+                  fontWeight: highlighted ? FontWeight.w600 : null,
+                ),
+          ),
           trailing: const Icon(Icons.chevron_right, size: 20),
         ),
       ),

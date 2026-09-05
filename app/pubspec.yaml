@@ -63,6 +63,24 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   sqflite_common_ffi: ^2.4.2+1
+  flutter_launcher_icons: ^0.14.4
+
+# Regenerate with `dart run flutter_launcher_icons` after changing
+# assets/icon/icon.png or icon_foreground.png (see
+# assets/icon/generate_icon.py for how those are drawn).
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#0E6E5D"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    background_color: "#0E6E5D"
+    theme_color: "#0E6E5D"
+
 flutter:
 
   # The following line ensures that the Material Icons font is
