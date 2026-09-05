@@ -25,10 +25,10 @@ actually runs when a user scans seeds — see
 `ml/` — see [`../ml/README.md`](../ml/README.md) for the full pipeline
 (prepare → split → train → evaluate → export). Trains Model V1 (classical
 ML on the same features the Dart `FeatureExtractor` computes) and, later,
-Model V2 (CNN). **Nothing this pipeline produces is consumed by the app
-yet** — a labelled barley dataset now exists (see
-[`DATASET_GUIDE.md`](DATASET_GUIDE.md)), but Model V1 hasn't been trained
-from it.
+Model V2 (CNN). A first Model V1 has now been trained on the barley
+dataset (results in [`VALIDATION.md`](VALIDATION.md)), but **nothing this
+pipeline produces is consumed by the app yet** — see "How V0 becomes V1"
+below for what's still needed before that's true.
 
 ## 3. Python↔Dart feature parity (verified 2026-09-04)
 

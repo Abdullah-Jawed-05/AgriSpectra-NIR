@@ -5,7 +5,52 @@ elsewhere (UI copy, report text, demo scripts) stay honest. Update this
 file whenever validation status changes — do not let ARCHITECTURE.md or
 the app's UI copy get ahead of what's actually been tested.
 
-## Current status: pre-validation
+## Model V1 — first training run (2026-09-05)
+
+`ml/training/train_baseline.py` (LightGBM) trained on the full barley
+dataset for the first time, via `prepare_dataset.py` → `split_dataset.py`
+→ `train_baseline.py` → `evaluate_model.py`. Read the numbers below with
+the caveat in the next paragraph in mind at all times — they are a sanity
+check, not a validated accuracy claim (§19/§66 of the build spec).
+
+**Not leakage-safe.** The dataset is one collection session, so
+`split_dataset.py` could not do its intended group-by-batch split (a group
+split needs ≥2 batches to hold one out from) — it fell back to a
+label-stratified row split, which can and does put near-duplicate seeds
+from the same shoot on both sides of train/test. Treat every number below
+as measuring "does the model separate these 5 classes at all," not
+generalization to a new session, lighting setup, or phone.
+
+Held-out test set (121 rows, stratified row split): **macro-F1 0.62,
+balanced accuracy 0.60**, ROC-AUC (one-vs-rest, macro) 0.87.
+
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| IMPURITIES | 0.82 | 0.75 | 0.78 | 12 |
+| BROKEN | 0.75 | 0.67 | 0.71 | 27 |
+| GOOD | 0.64 | 0.62 | 0.63 | 37 |
+| DAMAGED | 0.46 | 0.59 | 0.52 | 32 |
+| SHRIVELED | 0.56 | 0.38 | 0.45 | 13 |
+
+Confusion matrix: `ml/models/v1/eval/confusion_matrix.png` (gitignored —
+regenerate with the command above). The confusable pairs are exactly what
+you'd expect from the underlying biology/optics, not a red flag:
+- **GOOD ↔ DAMAGED** is the main confusion (13 GOOD called DAMAGED, 7
+  DAMAGED called GOOD) — mild damage and undamaged sit on a visual
+  continuum; this is the hardest real boundary in the taxonomy.
+- **SHRIVELED** is the weakest class (recall 0.38) and also the smallest
+  (63 images total, 13 in this test split) — the clearest case for "more
+  data fixes this," not a modeling problem.
+- **IMPURITIES** and **BROKEN** — the two most visually distinct classes —
+  perform best, as expected.
+
+This is a genuine, informative first signal that the feature set (now
+parity-verified against the app, see [`ML_PIPELINE.md`](ML_PIPELINE.md) §3)
+carries real information about the 5 classes. It is not evidence the model
+will work on a new photo taken tomorrow — see the leakage caveat above and
+the dataset-diversity requirements in §47 below.
+
+## Current status: pre-validation (for anything beyond the V1 sanity check above)
 
 No formal validation has been run. Model V0
 (`app/lib/ml/rule_classifier.dart` + `app/lib/ml/impurity_detector.dart`)
