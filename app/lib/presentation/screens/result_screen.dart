@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/fusion_result.dart';
 import '../../domain/entities/scan.dart';
 import '../../domain/entities/spectral_measurement.dart';
+import '../../export/scan_report_pdf.dart';
 import '../widgets/badges.dart';
 import '../widgets/batch_histogram_chart.dart';
 import '../widgets/seed_card.dart';
@@ -83,6 +85,15 @@ class _ResultBody extends ConsumerWidget {
           Text(
             '${scan.batchStatistics.seedsAccepted} seeds analyzed · ${_modeLabel(scan.fusionResult.mode)}',
             style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              label: const Text('Save Report'),
+              onPressed: () => _saveReport(context, scan, spectralAsync.value),
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
           _BreakdownCard(scan: scan),
@@ -170,6 +181,21 @@ class _ResultBody extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Generated on demand only, when the user taps this button — never
+  /// automatically after a scan (§40 of the build spec covers report
+  /// *content*, not when it's produced; producing a PDF nobody asked for
+  /// on every scan would just be wasted work).
+  Future<void> _saveReport(BuildContext context, Scan scan, SpectralMeasurement? spectral) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('Preparing report…'), duration: Duration(seconds: 2)));
+    try {
+      final bytes = await ScanReportPdf.build(scan: scan, spectral: spectral);
+      await Printing.sharePdf(bytes: bytes, filename: 'agrispectra_${scan.scanId}.pdf');
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not generate report: $e')));
+    }
   }
 
   String _modeLabel(AssessmentMode mode) => switch (mode) {
