@@ -94,6 +94,43 @@ texture features now agree within ~1–3%, color features within ~1–3%
 texture used unrelated algorithms). Re-run this whenever either side's
 feature code changes.
 
+## 4. Data augmentation (§18, added 2026-09-05)
+
+`ml/preprocessing/augmentation.py` (transforms) + `ml/scripts/augment_dataset.py`
+(CLI). Run **after** `split_dataset.py`, on `train.csv` only:
+
+```
+python augment_dataset.py --train dataset_v0.1/train.csv \
+  --crops-dir dataset_v0.1/crops --masks-dir dataset_v0.1/masks \
+  --out dataset_v0.1/ --multiplier 3
+```
+
+Operates on already-segmented `(crop, mask)` pairs, not raw tray photos:
+small rotation (±15°) + scale (±10%) + random flip always, brightness/
+contrast always, blur and/or noise sometimes — then **recomputes every
+feature from scratch** (geometry included, via the same
+`geometry_from_mask` `find_seeds` uses) rather than reusing the original
+row's values, so augmented rows are feature-complete and internally
+consistent. `prepare_dataset.py` now also writes each seed's mask
+alongside its crop (`dataset_v0.1/masks/`) — augmentation needs to know
+which pixels are foreground, which a crop alone doesn't encode.
+
+Never run this before splitting, and never on `val.csv`/`test.csv` — either
+would leak near-duplicates across the split and invalidate the numbers
+(§17/§66).
+
+**First result (barley, 2026-09-05):** training on the augmented set
+(409 → 1,636 rows) did **not** improve the held-out numbers — macro-F1
+0.59 vs. 0.62 without augmentation, balanced accuracy 0.60 vs. 0.60, ROC-AUC
+0.86 vs. 0.87 (see [`VALIDATION.md`](VALIDATION.md)). Read that as
+"neutral, not yet a win" rather than "doesn't work": several of our
+geometry features are already rotation-invariant by construction (the
+moment-based ellipse), so rotation/flip augmentation adds less signal here
+than it would for a raw-pixel CNN, and the underlying eval is still the
+same non-leakage-safe single-batch split — noisy enough that a small
+real effect could be hiding in it either direction. Worth re-checking once
+a second real collection batch exists to evaluate against.
+
 ## How V0 becomes V1
 
 When a real dataset exists and `ml/training/train_baseline.py` produces a

@@ -28,7 +28,16 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import balanced_accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder
 
-NON_FEATURE_COLUMNS = {"crop", "batch_id", "source_image", "seed_id", "crop_image_file", "label"}
+NON_FEATURE_COLUMNS = {
+    "crop",
+    "batch_id",
+    "source_image",
+    "seed_id",
+    "crop_image_file",
+    "mask_file",
+    "label",
+    "is_augmented",
+}
 
 try:
     import lightgbm as lgb

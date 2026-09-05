@@ -82,6 +82,11 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     crops_dir = args.out / "crops"
     crops_dir.mkdir(exist_ok=True)
+    # Masks alongside crops (not just the crop image) so augment_dataset.py
+    # can tell foreground from background in an already-cropped rectangle —
+    # a crop by itself doesn't carry that distinction.
+    masks_dir = args.out / "masks"
+    masks_dir.mkdir(exist_ok=True)
 
     rows = []
     n_images = 0
@@ -125,6 +130,7 @@ def main() -> None:
                         features = extract_all(seed)
                         crop_filename = f"{crop_name}_{batch_id}_{image_path.stem}_{seed.seed_id}.png"
                         cv2.imwrite(str(crops_dir / crop_filename), seed.crop_bgr)
+                        cv2.imwrite(str(masks_dir / crop_filename), seed.mask)
 
                         rows.append(
                             {
@@ -133,6 +139,7 @@ def main() -> None:
                                 "source_image": image_path.name,
                                 "seed_id": seed.seed_id,
                                 "crop_image_file": crop_filename,
+                                "mask_file": crop_filename,
                                 "label": label,
                                 **features,
                             }

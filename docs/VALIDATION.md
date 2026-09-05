@@ -50,6 +50,18 @@ carries real information about the 5 classes. It is not evidence the model
 will work on a new photo taken tomorrow — see the leakage caveat above and
 the dataset-diversity requirements in §47 below.
 
+**With augmentation** (`ml/scripts/augment_dataset.py`, §18 — see
+[`ML_PIPELINE.md`](ML_PIPELINE.md) §4), training rows 409 → 1,636, same
+held-out test set: macro-F1 **0.59** (was 0.62), balanced accuracy **0.60**
+(was 0.60), ROC-AUC **0.86** (was 0.87). Essentially a wash, not an
+improvement — recorded honestly rather than only reporting the better
+number. Plausible reasons: several geometry features are already
+rotation/flip-invariant by construction (moment-based ellipse), so this
+augmentation set adds less signal than it would to a raw-pixel model; and
+the eval itself is small and non-leakage-safe, so a real small effect
+either direction could be within its noise. Re-run once a second real
+batch exists to evaluate against.
+
 ## Current status: pre-validation (for anything beyond the V1 sanity check above)
 
 No formal validation has been run. Model V0

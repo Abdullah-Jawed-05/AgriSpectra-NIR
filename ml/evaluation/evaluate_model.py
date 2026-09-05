@@ -26,7 +26,16 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-NON_FEATURE_COLUMNS = {"crop", "batch_id", "source_image", "seed_id", "crop_image_file", "label"}
+NON_FEATURE_COLUMNS = {
+    "crop",
+    "batch_id",
+    "source_image",
+    "seed_id",
+    "crop_image_file",
+    "mask_file",
+    "label",
+    "is_augmented",
+}
 
 
 def main() -> None:

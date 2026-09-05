@@ -82,6 +82,56 @@ def _moment_ellipse(component_mask: np.ndarray) -> tuple[float, float, float]:
     return float(width), float(length), eccentricity
 
 
+def geometry_from_mask(mask: np.ndarray) -> dict:
+    """The full geometry feature set for one binary (0/255) mask: area,
+    perimeter, width/length/aspect ratio/eccentricity (moment-based
+    ellipse), circularity, convexity. Factored out of `find_seeds` so
+    `augment_dataset.py` can recompute geometry for an augmented mask
+    (rotated/scaled) using the exact same definitions — there must be only
+    one place this math lives, or augmented and real rows would carry
+    subtly different feature semantics.
+    """
+    area = float(cv2.countNonZero(mask))
+    if area <= 0:
+        return {
+            "area_px": 0.0,
+            "perimeter_px": 0.0,
+            "width_px": 0.0,
+            "length_px": 0.0,
+            "aspect_ratio": 0.0,
+            "circularity": 0.0,
+            "eccentricity": 0.0,
+            "convexity": 0.0,
+        }
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contour = max(contours, key=cv2.contourArea) if contours else None
+
+    perimeter = cv2.arcLength(contour, True) if contour is not None else 0.0
+    circularity = float(np.clip(4 * np.pi * area / (perimeter**2), 0, 1)) if perimeter > 0 else 0.0
+
+    if contour is not None:
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+    else:
+        hull_area = 0.0
+    convexity = float(np.clip(area / hull_area, 0, 1)) if hull_area > 0 else 0.0
+
+    width_px, length_px, eccentricity = _moment_ellipse(mask)
+    aspect_ratio = length_px / width_px if width_px > 0 else 0.0
+
+    return {
+        "area_px": area,
+        "perimeter_px": float(perimeter),
+        "width_px": width_px,
+        "length_px": length_px,
+        "aspect_ratio": aspect_ratio,
+        "circularity": circularity,
+        "eccentricity": eccentricity,
+        "convexity": convexity,
+    }
+
+
 def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[SegmentedSeed]:
     h0, w0 = image_bgr.shape[:2]
     scale = min(1.0, working_max_dim / max(h0, w0))
@@ -107,23 +157,13 @@ def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[Segme
 
     seeds: list[SegmentedSeed] = []
     for i, label in enumerate(valid):
-        x, y, w, h, area = stats[label]
+        x, y, w, h, _area = stats[label]
         component_mask = (labels[y : y + h, x : x + w] == label).astype(np.uint8) * 255
         crop = image[y : y + h, x : x + w]
 
-        contours, _ = cv2.findContours(component_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        if not contours:
+        geometry = geometry_from_mask(component_mask)
+        if geometry["perimeter_px"] <= 0:
             continue
-        contour = max(contours, key=cv2.contourArea)
-        perimeter = cv2.arcLength(contour, True)
-        circularity = float(np.clip(4 * np.pi * area / (perimeter**2), 0, 1)) if perimeter > 0 else 0.0
-
-        hull = cv2.convexHull(contour)
-        hull_area = cv2.contourArea(hull)
-        convexity = float(np.clip(area / hull_area, 0, 1)) if hull_area > 0 else 0.0
-
-        width_px, length_px, eccentricity = _moment_ellipse(component_mask)
-        aspect_ratio = length_px / width_px if width_px > 0 else 0.0
 
         seeds.append(
             SegmentedSeed(
@@ -131,14 +171,7 @@ def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[Segme
                 crop_bgr=crop,
                 mask=component_mask,
                 bbox=(int(x), int(y), int(w), int(h)),
-                area_px=float(area),
-                perimeter_px=float(perimeter),
-                width_px=width_px,
-                length_px=length_px,
-                aspect_ratio=aspect_ratio,
-                circularity=circularity,
-                eccentricity=eccentricity,
-                convexity=convexity,
+                **geometry,
             )
         )
     return seeds
