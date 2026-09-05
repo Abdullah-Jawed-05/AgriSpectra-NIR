@@ -151,7 +151,11 @@ class ScanDao {
         ),
         score: (predictionJson['score'] as num).toDouble(),
         confidence: (predictionJson['confidence'] as num).toDouble(),
-        evidence: const [],
+        // Defaults to [] for scans saved before evidence was persisted.
+        evidence: (predictionJson['evidence'] as List?)
+                ?.map((e) => EvidenceFactor.fromJson((e as Map).cast<String, Object?>()))
+                .toList() ??
+            const [],
         anomalies: (predictionJson['anomalies'] as List).cast<String>(),
         modelVersion: predictionJson['model_version'] as String,
       ),

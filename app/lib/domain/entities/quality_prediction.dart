@@ -12,6 +12,18 @@ class EvidenceFactor {
     required this.supportsGoodQuality,
     required this.weight,
   });
+
+  Map<String, Object?> toJson() => {
+        'description': description,
+        'supports_good_quality': supportsGoodQuality,
+        'weight': weight,
+      };
+
+  static EvidenceFactor fromJson(Map<String, Object?> json) => EvidenceFactor(
+        description: json['description'] as String,
+        supportsGoodQuality: json['supports_good_quality'] as bool,
+        weight: (json['weight'] as num).toDouble(),
+      );
 }
 
 /// A single-sensor (visual or NIR) prediction. The fusion layer combines
@@ -42,6 +54,7 @@ class QualityPrediction {
         'quality_class': qualityClass.storageKey,
         'score': score,
         'confidence': confidence,
+        'evidence': evidence.map((e) => e.toJson()).toList(),
         'anomalies': anomalies,
         'model_version': modelVersion,
       };
