@@ -70,6 +70,13 @@ class AppDatabase {
     }
   }
 
+  /// The additive migration steps, keyed by the version they upgrade *to*
+  /// — exposed so a test can build a v1 database, apply them, and check an
+  /// existing install would survive the upgrade (§25 "never alter a
+  /// released version's table shape in place").
+  @visibleForTesting
+  static Map<int, List<String>> get migrationsForTesting => _migrations;
+
   static const List<String> _createStatements = [
     '''
     CREATE TABLE scans (

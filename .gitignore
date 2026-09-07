@@ -8,3 +8,7 @@ raw/
 # Misc
 *.log
 .DS_Store
+
+# Claude Code local state — keep only the shared preview launch config
+.claude/*
+!.claude/launch.json
