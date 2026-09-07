@@ -54,14 +54,16 @@ void main() {
     final calibrationOnlyBad = dragFor(cal: 'expired');
 
     expect(everythingBad, lessThan(calibrationOnlyBad));
-    // KNOWN GAP: even everythingBad still drags ~13 pts, and
-    // calibrationOnlyBad ~30 — calibrationValidity only carries 0.4 of the
-    // NIR confidence weight, it doesn't gate the NIR contribution the way
-    // §71 ("a bad NIR calibration should not let a noisy NIR reading
-    // damage the result") reads. A fusion change that fixes this should
-    // update these bounds on purpose.
-    expect(everythingBad, lessThan(20));
-    expect(calibrationOnlyBad, greaterThan(20));
+    // §71 ("a bad NIR calibration should not let a noisy NIR reading damage
+    // the result"): calibrationValidity now gates NIR confidence
+    // multiplicatively, so an expired calibration collapses the NIR arm's
+    // fusion weight to ~0.2x whatever the raw signal looks like. Both drags
+    // are now small — previously calibrationOnlyBad was ~30 pts and
+    // everythingBad ~13. A clean-but-uncalibrated reading still drags a
+    // little more than a fully-degraded one because its signal/noise terms
+    // survive the 0.2x gate.
+    expect(everythingBad, lessThan(2));
+    expect(calibrationOnlyBad, lessThan(15));
   });
 
   test('combined confidence is in 0..1 and never exceeds the mean of the two inputs by much', () {
