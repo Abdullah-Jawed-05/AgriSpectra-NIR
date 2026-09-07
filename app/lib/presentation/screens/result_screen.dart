@@ -7,7 +7,9 @@ import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/fusion_result.dart';
 import '../../domain/entities/scan.dart';
+import '../../domain/entities/seed_result.dart';
 import '../../domain/entities/spectral_measurement.dart';
+import '../../domain/value_objects/quality_class.dart';
 import '../../export/scan_report_pdf.dart';
 import '../widgets/badges.dart';
 import '../widgets/batch_histogram_chart.dart';
@@ -96,6 +98,8 @@ class _ResultBody extends ConsumerWidget {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: AppSpacing.md),
+          _ClassSummaryStrip(seeds: scan.results),
+          const SizedBox(height: AppSpacing.md),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
@@ -161,25 +165,7 @@ class _ResultBody extends ConsumerWidget {
           ),
           Text('Individual seeds', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: scan.results.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: AppSpacing.sm,
-              crossAxisSpacing: AppSpacing.sm,
-              childAspectRatio: 0.78,
-            ),
-            itemBuilder: (context, i) {
-              final result = scan.results[i];
-              return SeedCard(
-                result: result,
-                index: i,
-                onTap: () => context.push('/scan/result/${scan.scanId}/seed/${result.seedId}'),
-              );
-            },
-          ),
+          _SeedsByClass(scan: scan),
           const SizedBox(height: AppSpacing.xxl),
           Text(
             'AgriSpectra provides preliminary non-destructive seed-quality screening and is '
@@ -261,6 +247,139 @@ class _BreakdownCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The order classes are shown in the result view — good first (the
+/// reassuring number), then problems, then non-seed.
+const _classDisplayOrder = [
+  QualityClass.good,
+  QualityClass.damaged,
+  QualityClass.shriveled,
+  QualityClass.broken,
+  QualityClass.impurities,
+  QualityClass.unknown,
+];
+
+Map<QualityClass, List<SeedResult>> _groupByClass(List<SeedResult> seeds) {
+  final map = <QualityClass, List<SeedResult>>{};
+  for (final s in seeds) {
+    (map[s.prediction.qualityClass] ??= []).add(s);
+  }
+  return map;
+}
+
+/// Prominent, colour-coded counts right under the score — the user asked
+/// for good seeds and impurities to read *vividly*, not be buried in a
+/// grid.
+class _ClassSummaryStrip extends StatelessWidget {
+  const _ClassSummaryStrip({required this.seeds});
+  final List<SeedResult> seeds;
+
+  @override
+  Widget build(BuildContext context) {
+    if (seeds.isEmpty) return const SizedBox.shrink();
+    final groups = _groupByClass(seeds);
+    final present = _classDisplayOrder.where((c) => (groups[c]?.isNotEmpty ?? false)).toList();
+
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        for (final c in present)
+          _CountChip(
+            color: qualityClassColor(c),
+            count: groups[c]!.length,
+            label: qualityClassResultLabel(c),
+          ),
+      ],
+    );
+  }
+}
+
+class _CountChip extends StatelessWidget {
+  const _CountChip({required this.color, required this.count, required this.label});
+  final Color color;
+  final int count;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$count',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+          const SizedBox(width: 6),
+          Text(label,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The per-seed grid, split into a labelled section per class so good
+/// seeds and non-seed objects are each their own clearly-headed block.
+class _SeedsByClass extends StatelessWidget {
+  const _SeedsByClass({required this.scan});
+  final Scan scan;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _groupByClass(scan.results);
+    final indexOf = {for (var i = 0; i < scan.results.length; i++) scan.results[i].seedId: i};
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final c in _classDisplayOrder)
+          if (groups[c]?.isNotEmpty ?? false) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.md, bottom: AppSpacing.sm),
+              child: Row(
+                children: [
+                  Container(width: 4, height: 16, color: qualityClassColor(c)),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    '${qualityClassResultLabel(c)} · ${groups[c]!.length}',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: qualityClassColor(c),
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: groups[c]!.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: AppSpacing.sm,
+                crossAxisSpacing: AppSpacing.sm,
+                childAspectRatio: 0.78,
+              ),
+              itemBuilder: (context, i) {
+                final result = groups[c]![i];
+                return SeedCard(
+                  result: result,
+                  index: indexOf[result.seedId] ?? 0,
+                  onTap: () => context.push('/scan/result/${scan.scanId}/seed/${result.seedId}'),
+                );
+              },
+            ),
+          ],
+      ],
     );
   }
 }

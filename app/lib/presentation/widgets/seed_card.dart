@@ -4,7 +4,9 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/seed_result.dart';
 import 'badges.dart';
 
-/// One seed as a card in the batch grid (§22).
+/// One seed as a card in the batch grid (§22). A colour bar keyed to the
+/// class runs down the left edge so a block of good (or non-seed) cards
+/// reads at a glance.
 class SeedCard extends StatelessWidget {
   const SeedCard({super.key, required this.result, required this.index, required this.onTap});
 
@@ -14,6 +16,7 @@ class SeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = qualityClassColor(result.prediction.qualityClass);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -23,9 +26,18 @@ class SeedCard extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: 1.3,
-              child: Container(
-                color: AppColors.surfaceAlt,
-                child: Image.memory(result.cropPng, fit: BoxFit.cover),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    color: AppColors.surfaceAlt,
+                    child: Image.memory(result.cropPng, fit: BoxFit.cover),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(width: 5, color: accent),
+                  ),
+                ],
               ),
             ),
             Padding(

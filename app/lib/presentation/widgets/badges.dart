@@ -40,18 +40,27 @@ class ConfidenceChip extends StatelessWidget {
   }
 }
 
+/// Shared colour for a quality class — used by the badge, the result
+/// screen's class summary, and the per-seed card accent so they read as
+/// one system. Impurities is foreign matter, not a quality grade, so it's
+/// neutral rather than on the good/moderate/low scale.
+Color qualityClassColor(QualityClass qualityClass) => switch (qualityClass) {
+      QualityClass.good => AppColors.good,
+      QualityClass.damaged || QualityClass.shriveled => AppColors.moderate,
+      QualityClass.broken => AppColors.low,
+      QualityClass.impurities || QualityClass.unknown => AppColors.inkFaint,
+    };
+
+/// User-facing label for a class in the result view — `impurities` reads
+/// better as "Non-seed" to a grower.
+String qualityClassResultLabel(QualityClass qualityClass) =>
+    qualityClass == QualityClass.impurities ? 'Non-seed' : qualityClass.label;
+
 class QualityClassBadge extends StatelessWidget {
   const QualityClassBadge({super.key, required this.qualityClass});
   final QualityClass qualityClass;
 
-  Color get _color => switch (qualityClass) {
-        QualityClass.good => AppColors.good,
-        QualityClass.damaged || QualityClass.shriveled => AppColors.moderate,
-        QualityClass.broken => AppColors.low,
-        // Impurities is foreign matter, not a quality grade — render it
-        // neutrally rather than on the good/moderate/low scale.
-        QualityClass.impurities || QualityClass.unknown => AppColors.inkFaint,
-      };
+  Color get _color => qualityClassColor(qualityClass);
 
   @override
   Widget build(BuildContext context) {
