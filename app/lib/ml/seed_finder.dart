@@ -54,69 +54,298 @@ class ClassicalCVSeedFinder implements SeedFinder {
   /// over-segmenting a single lumpy grain.
   static const double _splitAreaMultiple = 1.6;
 
+  /// A blob whose CIE-Lab chroma (distance from neutral grey) averages
+  /// below this is a cast shadow, not a seed — a shadow shifts lightness,
+  /// not colour. Mirrors `_SHADOW_CHROMA_MAX` in segmentation.py.
+  static const double _shadowChromaMax = 4.0;
+
+  /// After splitting, a blob smaller than this fraction of the batch's
+  /// median blob area is a furrow line / speck, not a seed.
+  static const double _minSeedAreaFraction = 0.40;
+
+  /// A rejected over-size (merged) blob covering more than this share of
+  /// the frame means the seeds are piled/touching — per-seed detail is
+  /// then unreliable and [lastLayoutPiled] is set.
+  static const double _pileOversizeFraction = 0.05;
+
+  static const double _seedlikeMinFill = 0.30;
+
+  /// If nothing in the frame has CIE-Lab chroma above this, the image is
+  /// effectively greyscale — skip the colour channel and go straight to
+  /// the luminance fallback. Mirrors `_MIN_CHROMA_FOR_COLOUR` in
+  /// segmentation.py.
+  static const double _minChromaForColour = 3.0;
+
   /// Populated by the most recent [find] call: how many blobs the splitter
   /// turned into multiple seeds, and how many extra seeds that produced.
   int lastComponentsSplit = 0;
 
   /// Populated by the most recent [find] call: how many raw connected
-  /// components were found in the winning polarity, and how many were
-  /// discarded as too small/large to plausibly be a single seed. Exposed
-  /// imperatively (rather than returned) so [SeedFinder.find]'s return
-  /// type stays a plain seed list — see [BatchStatistics.seedsRejected].
+  /// components were found, and how many were discarded as too small/large
+  /// to plausibly be a single seed.
   int lastTotalCandidates = 0;
   int lastRejectedCandidates = 0;
+
+  /// Which channel won: `'chroma'` (colour vs neutral background, the
+  /// normal case) or `'lum_dark'` (luminance fallback for very dark seeds).
+  String lastChannel = 'chroma';
+
+  /// The seeds in the frame are piled / touching — the batch count and
+  /// per-seed results are unreliable and the user should be told to spread
+  /// them into a single layer.
+  bool lastLayoutPiled = false;
 
   @override
   List<SegmentedSeed> find(img.Image original) {
     final image = _downscale(original, workingMaxDimension);
     // Normalise white balance + exposure before anything reads a pixel
-    // (§8). Without this, colour features and the Otsu threshold encode
-    // which lighting the photo was shot under, not the seed — a model
-    // trained on one collection session then scores near-random on the
-    // next (see docs/VALIDATION.md's cross-session result). Mirrored in
-    // ml/preprocessing/segmentation.py::_normalise_lighting.
+    // (§8). Mirrored in segmentation.py::_normalise_lighting.
     _normaliseLighting(image);
-    // img.grayscale() mutates its argument in place and returns the same
-    // object — pass it a clone, or `image` itself desaturates, and every
-    // per-seed crop cut from it downstream (`_buildSegmentedSeed`'s `crop`,
-    // which color features are computed from) would carry grayscale pixel
-    // data with no color information left to extract.
-    final gray = img.grayscale(image.clone());
-    final w = gray.width, h = gray.height;
+    final w = image.width, h = image.height;
+    final area = w * h;
 
-    final luminance = Float32List(w * h);
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        luminance[y * w + x] = img.getLuminance(gray.getPixel(x, y)).toDouble();
+    // Segment on CIE-Lab chroma (distance from the neutral grey axis): a
+    // tan/brown grain is chromatic, plain paper and a cast shadow are
+    // near-neutral. Luminance-Otsu can't tell a light seed from light
+    // paper and catches the dark furrow lines / inter-grain shadows
+    // instead. Mirrors segmentation.py::segment.
+    final chroma = _chromaField(image, w, h);
+    var maxChroma = 0.0;
+    for (final v in chroma) {
+      if (v > maxChroma) maxChroma = v;
+    }
+
+    Uint8List? chromaMask;
+    if (maxChroma >= _minChromaForColour) {
+      final m = _morphClean(_thresholdAbove(chroma), w, h);
+      if (_countSeedlike(m, w, h, area) > 0) chromaMask = m;
+    }
+
+    final Uint8List mask;
+    if (chromaMask != null) {
+      mask = chromaMask;
+      lastChannel = 'chroma';
+    } else {
+      final gray = img.grayscale(image.clone());
+      final lum = Float32List(area);
+      for (var i = 0; i < area; i++) {
+        lum[i] = -img.getLuminance(gray.getPixel(i % w, i ~/ w)).toDouble();
+      }
+      mask = _morphClean(_thresholdAbove(lum), w, h);
+      lastChannel = 'lum_dark';
+    }
+
+    // Shadow rejection only makes sense on the chroma channel — there a
+    // near-neutral blob is a cast shadow. On the luminance fallback a
+    // low-chroma blob just means the seeds aren't colourful.
+    final useShadowFilter = lastChannel == 'chroma';
+    bool notShadow(_RawComponent c) => !useShadowFilter || _meanChroma(chroma, c) >= _shadowChromaMax;
+
+    final components = _labelBinary(mask, w, h);
+    lastTotalCandidates = components.length;
+
+    final minArea = area * minAreaFraction;
+    final maxArea = area * maxAreaFraction;
+    final valid = <_RawComponent>[];
+    double oversizeArea = 0;
+    for (final c in components) {
+      final a = c.pixels.length;
+      if (a >= minArea && a <= maxArea) {
+        valid.add(c);
+      } else if (a > maxArea && a > _pileOversizeFraction * area && notShadow(c)) {
+        oversizeArea += a;
       }
     }
+    lastRejectedCandidates = components.length - valid.length;
+    lastLayoutPiled = oversizeArea > _pileOversizeFraction * area;
 
-    final threshold = _otsuThreshold(luminance);
+    final split = _splitMergedComponents(valid, w, h);
 
-    // Seeds are usually placed on a background chosen for contrast (§8/§9
-    // capture guidance), but we don't know a priori whether that
-    // background is lighter or darker than the seeds — try both
-    // polarities and keep whichever produces components that look like a
-    // seed batch (dark seeds on a light tray, or vice versa, are both
-    // common low-cost setups).
-    final darkForeground = _labelComponents(luminance, w, h, threshold, foregroundBelow: true);
-    final lightForeground = _labelComponents(luminance, w, h, threshold, foregroundBelow: false);
-
-    final darkValid = _validComponents(darkForeground, w * h);
-    final lightValid = _validComponents(lightForeground, w * h);
-
-    final useD = darkValid.length >= lightValid.length;
-    final chosen = useD ? darkValid : lightValid;
-    lastTotalCandidates = useD ? darkForeground.length : lightForeground.length;
-    lastRejectedCandidates = lastTotalCandidates - chosen.length;
-
-    final finalComponents = _splitMergedComponents(chosen, w, h);
+    // Fragment rejection: a blob far below the batch's typical seed size
+    // is a furrow line / speck.
+    final seedComponents = split.where(notShadow).toList();
+    if (seedComponents.isNotEmpty) {
+      final sizes = seedComponents.map((c) => c.pixels.length).toList()..sort();
+      final median = sizes[sizes.length ~/ 2].toDouble();
+      seedComponents.removeWhere((c) => c.pixels.length < _minSeedAreaFraction * median);
+    }
 
     final results = <SegmentedSeed>[];
-    for (var i = 0; i < finalComponents.length; i++) {
-      results.add(_buildSegmentedSeed('seed_${(i + 1).toString().padLeft(3, '0')}', finalComponents[i], image));
+    for (var i = 0; i < seedComponents.length; i++) {
+      results.add(_buildSegmentedSeed('seed_${(i + 1).toString().padLeft(3, '0')}', seedComponents[i], image));
     }
     return results;
+  }
+
+  /// Per-pixel CIE-Lab chroma = sqrt(a*² + b*²). Same Lab as
+  /// feature_extractor.dart / features.py::_rgb_to_lab. sRGB→linear is
+  /// LUT'd (channels are 0..255 ints); the cube-root f() is not.
+  Float32List _chromaField(img.Image image, int w, int h) {
+    final lut = _srgbLinearLut;
+    const xn = 0.95047, yn = 1.0, zn = 1.08883;
+    double f(double t) => t > 0.008856 ? pow(t, 1 / 3).toDouble() : (7.787 * t) + (16 / 116);
+
+    final out = Float32List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        final rl = lut[p.r.toInt().clamp(0, 255)];
+        final gl = lut[p.g.toInt().clamp(0, 255)];
+        final bl = lut[p.b.toInt().clamp(0, 255)];
+        final xx = rl * 0.4124 + gl * 0.3576 + bl * 0.1805;
+        final yy = rl * 0.2126 + gl * 0.7152 + bl * 0.0722;
+        final zz = rl * 0.0193 + gl * 0.1192 + bl * 0.9505;
+        final fx = f(xx / xn), fy = f(yy / yn), fz = f(zz / zn);
+        final aLab = 500 * (fx - fy);
+        final bLab = 200 * (fy - fz);
+        out[y * w + x] = sqrt(aLab * aLab + bLab * bLab);
+      }
+    }
+    return out;
+  }
+
+  static final Float64List _srgbLinearLut = () {
+    final lut = Float64List(256);
+    for (var i = 0; i < 256; i++) {
+      final v = i / 255;
+      lut[i] = v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4).toDouble();
+    }
+    return lut;
+  }();
+
+  /// 0/255 mask where [field] is above an Otsu split of the field scaled
+  /// to 0..255. Mirrors segmentation.py::_otsu_above.
+  Uint8List _thresholdAbove(Float32List field) {
+    var lo = double.infinity, hi = -double.infinity;
+    for (final v in field) {
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    final range = hi - lo;
+    final mask = Uint8List(field.length);
+    if (range < 1e-6) return mask;
+    final scaled = Float32List(field.length);
+    for (var i = 0; i < field.length; i++) {
+      scaled[i] = ((field[i] - lo) / range * 255).clamp(0, 255).toDouble();
+    }
+    final t = _otsuThreshold(scaled);
+    for (var i = 0; i < field.length; i++) {
+      if (scaled[i] > t) mask[i] = 255;
+    }
+    return mask;
+  }
+
+  /// 3×3 morphological open then close (4-connectivity structuring
+  /// element via two passes each). Mirrors cv2.MORPH_OPEN + MORPH_CLOSE
+  /// with a 3×3 rectangular kernel closely enough for feature parity.
+  Uint8List _morphClean(Uint8List mask, int w, int h) {
+    return _dilate3(_erode3(_dilate3(_erode3(mask, w, h), w, h), w, h), w, h);
+  }
+
+  Uint8List _erode3(Uint8List m, int w, int h) {
+    final o = Uint8List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final i = y * w + x;
+        if (m[i] == 0) continue;
+        var keep = true;
+        for (var dy = -1; dy <= 1 && keep; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            final nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            if (m[ny * w + nx] == 0) {
+              keep = false;
+              break;
+            }
+          }
+        }
+        if (keep) o[i] = 255;
+      }
+    }
+    return o;
+  }
+
+  Uint8List _dilate3(Uint8List m, int w, int h) {
+    final o = Uint8List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (m[y * w + x] == 0) continue;
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            final nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            o[ny * w + nx] = 255;
+          }
+        }
+      }
+    }
+    return o;
+  }
+
+  int _countSeedlike(Uint8List mask, int w, int h, int imageArea) {
+    final lo = imageArea * minAreaFraction, hi = imageArea * maxAreaFraction;
+    var count = 0;
+    for (final c in _labelBinary(mask, w, h)) {
+      final a = c.pixels.length;
+      if (a < lo || a > hi) continue;
+      final bw = c.maxX - c.minX + 1, bh = c.maxY - c.minY + 1;
+      if (a / (bw * bh) >= _seedlikeMinFill) count++;
+    }
+    return count;
+  }
+
+  double _meanChroma(Float32List chroma, _RawComponent c) {
+    if (c.pixels.isEmpty) return 0;
+    double sum = 0;
+    for (final idx in c.pixels) {
+      sum += chroma[idx];
+    }
+    return sum / c.pixels.length;
+  }
+
+  /// Flood-fill 8-connected components of a 0/255 binary mask.
+  List<_RawComponent> _labelBinary(Uint8List mask, int w, int h) {
+    final visited = Uint8List(w * h);
+    final components = <_RawComponent>[];
+    final queue = Uint32List(w * h);
+
+    for (var start = 0; start < w * h; start++) {
+      if (visited[start] != 0 || mask[start] == 0) continue;
+      var head = 0, tail = 0;
+      queue[tail++] = start;
+      visited[start] = 1;
+      final pixels = <int>[];
+      int minX = w, maxX = 0, minY = h, maxY = 0;
+      while (head < tail) {
+        final idx = queue[head++];
+        final x = idx % w, y = idx ~/ w;
+        pixels.add(idx);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        for (var dy = -1; dy <= 1; dy++) {
+          for (var dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            final nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            final nIdx = ny * w + nx;
+            if (visited[nIdx] != 0 || mask[nIdx] == 0) continue;
+            visited[nIdx] = 1;
+            queue[tail++] = nIdx;
+          }
+        }
+      }
+      components.add(_RawComponent(
+        pixels: pixels,
+        minX: minX,
+        maxX: maxX,
+        minY: minY,
+        maxY: maxY,
+        imageWidth: w,
+      ));
+    }
+    return components;
   }
 
   /// Runs [splitter] over the components that are large enough to plausibly
@@ -288,72 +517,6 @@ class ClassicalCVSeedFinder implements SeedFinder {
       }
     }
     return bestThreshold.toDouble();
-  }
-
-  List<_RawComponent> _labelComponents(
-    Float32List luminance,
-    int w,
-    int h,
-    double threshold, {
-    required bool foregroundBelow,
-  }) {
-    final visited = Uint8List(w * h);
-    final components = <_RawComponent>[];
-    final queue = Uint32List(w * h);
-
-    bool isForeground(int idx) =>
-        foregroundBelow ? luminance[idx] < threshold : luminance[idx] >= threshold;
-
-    for (var start = 0; start < w * h; start++) {
-      if (visited[start] != 0 || !isForeground(start)) continue;
-
-      var head = 0, tail = 0;
-      queue[tail++] = start;
-      visited[start] = 1;
-
-      final pixels = <int>[];
-      int minX = w, maxX = 0, minY = h, maxY = 0;
-
-      while (head < tail) {
-        final idx = queue[head++];
-        final x = idx % w, y = idx ~/ w;
-        pixels.add(idx);
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-
-        for (var dy = -1; dy <= 1; dy++) {
-          for (var dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0) continue;
-            final nx = x + dx, ny = y + dy;
-            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-            final nIdx = ny * w + nx;
-            if (visited[nIdx] != 0 || !isForeground(nIdx)) continue;
-            visited[nIdx] = 1;
-            queue[tail++] = nIdx;
-          }
-        }
-      }
-
-      components.add(_RawComponent(
-        pixels: pixels,
-        minX: minX,
-        maxX: maxX,
-        minY: minY,
-        maxY: maxY,
-        imageWidth: w,
-      ));
-    }
-    return components;
-  }
-
-  List<_RawComponent> _validComponents(List<_RawComponent> components, int imageArea) {
-    final minArea = imageArea * minAreaFraction;
-    final maxArea = imageArea * maxAreaFraction;
-    return components
-        .where((c) => c.pixels.length >= minArea && c.pixels.length <= maxArea)
-        .toList();
   }
 
   SegmentedSeed _buildSegmentedSeed(String seedId, _RawComponent component, img.Image sourceImage) {

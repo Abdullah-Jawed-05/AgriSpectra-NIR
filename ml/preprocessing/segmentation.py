@@ -25,6 +25,21 @@ _EXPOSURE_TARGET_MEAN = 128.0
 _MIN_CHANNEL_SCALE = 0.5
 _MAX_CHANNEL_SCALE = 2.0
 
+# --- colour-distance segmentation (mirrors seed_finder.dart) ---------------
+# Seeds photographed on plain paper are often barely darker than it, so a
+# luminance Otsu catches the furrow lines / inter-grain shadows as "seeds"
+# and misses the grains. Segment on CIE-Lab chroma (distance from the
+# neutral grey axis) instead: a tan/brown grain is chromatic, plain
+# paper and a cast shadow are near-neutral. Luminance is kept only as a
+# fallback for the case where chroma finds nothing (very dark seeds).
+_SHADOW_CHROMA_MAX = 4.0          # a blob this close to neutral is a shadow
+_MIN_SEED_AREA_FRACTION = 0.40    # drop blobs < this * median kept-blob area
+_PILE_OVERSIZE_FRACTION = 0.05    # a rejected merged blob bigger than this share
+                                  # of the frame => the seeds are piled/touching
+_SEEDLIKE_MIN_FILL = 0.30         # component area / bbox area, to score a candidate mask
+_MIN_CHROMA_FOR_COLOUR = 3.0      # below this peak chroma the image is greyscale
+                                  # -> skip the colour channel, use luminance
+
 
 def _normalise_lighting(image_bgr: np.ndarray) -> np.ndarray:
     """Gray-world white balance + an exposure pull to a fixed mid-grey.
@@ -147,6 +162,58 @@ def _otsu_binary(gray: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     _, dark = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     light = cv2.bitwise_not(dark)
     return dark, light
+
+
+def _chroma_field(image_bgr: np.ndarray) -> np.ndarray:
+    """Per-pixel CIE-Lab chroma = sqrt(a*^2 + b*^2): distance from the
+    neutral grey axis. Chromatic seed high, plain paper / cast shadow low.
+    Uses the same hand-rolled Lab as feature_extractor.dart (imported
+    lazily to dodge the features<->segmentation import cycle)."""
+    from .features import _rgb_to_lab  # noqa: PLC0415
+
+    b = image_bgr[:, :, 0].astype(np.float64)
+    g = image_bgr[:, :, 1].astype(np.float64)
+    r = image_bgr[:, :, 2].astype(np.float64)
+    _, a_lab, b_lab = _rgb_to_lab(r, g, b)
+    return np.sqrt(a_lab * a_lab + b_lab * b_lab)
+
+
+def _otsu_above(field: np.ndarray) -> np.ndarray:
+    """Foreground = field values above an Otsu split of the 0..255-scaled
+    field. uint8 0/255 mask."""
+    f = field - float(field.min())
+    m = float(f.max())
+    if m < 1e-6:
+        return np.zeros(field.shape, np.uint8)
+    f8 = np.clip(f / m * 255.0, 0, 255).astype(np.uint8)
+    t, _ = cv2.threshold(f8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return ((f8 > t).astype(np.uint8)) * 255
+
+
+def _morph_clean(mask: np.ndarray) -> np.ndarray:
+    k = np.ones((3, 3), np.uint8)
+    return cv2.morphologyEx(cv2.morphologyEx(mask, cv2.MORPH_OPEN, k), cv2.MORPH_CLOSE, k)
+
+
+def _count_seedlike(mask: np.ndarray, image_area: int) -> int:
+    """How many components in `mask` look like a single seed — area in the
+    valid band and not a thin sliver. Used to pick between candidate masks."""
+    n, _, st, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    lo, hi = image_area * MIN_AREA_FRACTION, image_area * MAX_AREA_FRACTION
+    c = 0
+    for i in range(1, n):
+        a = st[i, cv2.CC_STAT_AREA]
+        if lo <= a <= hi and a / max(st[i, cv2.CC_STAT_WIDTH] * st[i, cv2.CC_STAT_HEIGHT], 1) >= _SEEDLIKE_MIN_FILL:
+            c += 1
+    return c
+
+
+@dataclass
+class SegmentationResult:
+    seeds: list["SegmentedSeed"]
+    channel: str            # "chroma" or "lum_dark"
+    piled: bool             # seeds are piled/touching -> per-seed detail is unreliable
+    foreground_fraction: float
 
 
 def _valid_components(mask: np.ndarray, image_area: int):
@@ -274,66 +341,114 @@ def pick_primary_seed(seeds: list[SegmentedSeed]) -> SegmentedSeed | None:
 
 
 def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[SegmentedSeed]:
+    """Back-compat wrapper — returns just the seed list. Use `segment` for
+    the channel / pile metadata."""
+    return segment(image_bgr, working_max_dim).seeds
+
+
+def segment(image_bgr: np.ndarray, working_max_dim: int = 1100) -> SegmentationResult:
     h0, w0 = image_bgr.shape[:2]
     scale = min(1.0, working_max_dim / max(h0, w0))
     image = (
-        cv2.resize(
-            image_bgr,
-            (int(w0 * scale), int(h0 * scale)),
-            interpolation=cv2.INTER_LINEAR,
-        )
+        cv2.resize(image_bgr, (int(w0 * scale), int(h0 * scale)), interpolation=cv2.INTER_LINEAR)
         if scale < 1.0
         else image_bgr
     )
     image = _normalise_lighting(image)
+    image_area = image.shape[0] * image.shape[1]
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    dark_mask, light_mask = _otsu_binary(gray)
-    image_area = gray.shape[0] * gray.shape[1]
+    chroma = _chroma_field(image)
 
-    dark_result = _valid_components(dark_mask, image_area)
-    light_result = _valid_components(light_mask, image_area)
+    chroma_mask = None
+    if float(chroma.max()) >= _MIN_CHROMA_FOR_COLOUR:
+        m = _morph_clean(_otsu_above(chroma))
+        if _count_seedlike(m, image_area) > 0:
+            chroma_mask = m
 
-    use_dark = len(dark_result[4]) >= len(light_result[4])
-    n_labels, labels, stats, centroids, valid = dark_result if use_dark else light_result
+    if chroma_mask is not None:
+        mask, channel = chroma_mask, "chroma"
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float64)
+        mask, channel = _morph_clean(_otsu_above(-gray)), "lum_dark"
 
-    # Touching-seed split gate: a component is only a split candidate if
-    # it's clearly bigger than a typical single seed (25th percentile of
-    # component areas) — mirrors ClassicalCVSeedFinder._splitMergedComponents.
-    comp_areas = sorted(int(stats[l][4]) for l in valid)
+    foreground_fraction = float((mask > 0).mean())
+
+    # Shadow rejection only makes sense on the chroma channel — there a
+    # near-neutral blob is a cast shadow. On the luminance fallback a
+    # low-chroma blob just means the seeds aren't colourful.
+    use_shadow_filter = channel == "chroma"
+
+    n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    min_area = image_area * MIN_AREA_FRACTION
+    max_area = image_area * MAX_AREA_FRACTION
+    valid = [i for i in range(1, n_labels) if min_area <= stats[i, cv2.CC_STAT_AREA] <= max_area]
+
+    def not_shadow_mask(m: np.ndarray) -> bool:
+        return (not use_shadow_filter) or float(chroma[m].mean()) >= _SHADOW_CHROMA_MAX
+
+    # A big *seed-coloured* blob rejected as over-size means the seeds are
+    # piled / touching — per-seed detail below is unreliable.
+    oversize = 0
+    for i in range(1, n_labels):
+        a = int(stats[i, cv2.CC_STAT_AREA])
+        if a <= max_area or a <= _PILE_OVERSIZE_FRACTION * image_area:
+            continue
+        if not_shadow_mask(labels == i):
+            oversize += a
+    piled = oversize > _PILE_OVERSIZE_FRACTION * image_area
+
+    comp_areas = sorted(int(stats[l][cv2.CC_STAT_AREA]) for l in valid)
     typical_area = comp_areas[round((len(comp_areas) - 1) * 0.25)] if comp_areas else 0
     split_threshold = typical_area * SPLIT_AREA_MULTIPLE
 
-    seeds: list[SegmentedSeed] = []
+    # (bbox_x, bbox_y, local_mask uint8 0/255) per candidate piece.
+    pieces: list[tuple[int, int, np.ndarray]] = []
     for label in valid:
         x, y, w, h, area = (int(v) for v in stats[label])
         component_mask = (labels[y : y + h, x : x + w] == label).astype(np.uint8) * 255
-
         sub_masks = [component_mask]
         if len(valid) >= 2 and area >= split_threshold > 0:
             parts = split_component(component_mask)
             if len(parts) >= 2:
                 sub_masks = [p.astype(np.uint8) * 255 for p in parts]
-
         for sub in sub_masks:
             ys, xs = np.nonzero(sub)
             if ys.size == 0:
                 continue
             sy0, sy1, sx0, sx1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
-            local = sub[sy0:sy1, sx0:sx1]
-            crop = image[y + sy0 : y + sy1, x + sx0 : x + sx1]
+            pieces.append((x + sx0, y + sy0, sub[sy0:sy1, sx0:sx1]))
 
-            geometry = geometry_from_mask(local)
-            if geometry["perimeter_px"] <= 0:
-                continue
+    # Shadow rejection: a near-neutral blob is a cast shadow, not a seed.
+    kept: list[tuple[int, int, np.ndarray]] = []
+    for px, py, local in pieces:
+        m = local > 0
+        if not m.any():
+            continue
+        region = np.zeros(chroma.shape, bool)
+        region[py : py + local.shape[0], px : px + local.shape[1]] = m
+        if not_shadow_mask(region):
+            kept.append((px, py, local))
 
-            seeds.append(
-                SegmentedSeed(
-                    seed_id=f"seed_{len(seeds) + 1:03d}",
-                    crop_bgr=crop,
-                    mask=local,
-                    bbox=(int(x + sx0), int(y + sy0), int(sx1 - sx0), int(sy1 - sy0)),
-                    **geometry,
-                )
+    # Fragment rejection: a blob far below the batch's typical seed size is
+    # a furrow line / speck, not a seed.
+    if kept:
+        med = float(np.median([int((lm > 0).sum()) for _, _, lm in kept]))
+        kept = [k for k in kept if int((k[2] > 0).sum()) >= _MIN_SEED_AREA_FRACTION * med]
+
+    seeds: list[SegmentedSeed] = []
+    for px, py, local in kept:
+        geometry = geometry_from_mask(local)
+        if geometry["perimeter_px"] <= 0:
+            continue
+        crop = image[py : py + local.shape[0], px : px + local.shape[1]]
+        seeds.append(
+            SegmentedSeed(
+                seed_id=f"seed_{len(seeds) + 1:03d}",
+                crop_bgr=crop,
+                mask=local,
+                bbox=(int(px), int(py), int(local.shape[1]), int(local.shape[0])),
+                **geometry,
             )
-    return seeds
+        )
+
+    return SegmentationResult(seeds=seeds, channel=channel, piled=piled, foreground_fraction=foreground_fraction)

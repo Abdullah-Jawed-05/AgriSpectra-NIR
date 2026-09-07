@@ -32,7 +32,14 @@ img.Image _canvasWithBlob({
   int? biteH,
 }) {
   final rng = Random(42);
-  int jitter(int v) => (v + rng.nextInt(7) - 3).clamp(0, 255);
+  // One brightness offset per pixel, applied to all three channels — keeps
+  // a grey fixture genuinely grey (so the chroma channel correctly defers
+  // to the luminance path) while still preserving a colour ratio.
+  List<int> jit(List<int> rgb) {
+    final d = rng.nextInt(7) - 3;
+    return [for (final c in rgb) (c + d).clamp(0, 255)];
+  }
+
   bool inBite(int x, int y) =>
       biteX != null &&
       x >= biteX &&
@@ -43,25 +50,15 @@ img.Image _canvasWithBlob({
   final image = img.Image(width: canvasW, height: canvasH);
   for (var y = 0; y < canvasH; y++) {
     for (var x = 0; x < canvasW; x++) {
-      image.setPixelRgb(
-        x,
-        y,
-        jitter(bgRgb[0]),
-        jitter(bgRgb[1]),
-        jitter(bgRgb[2]),
-      );
+      final c = jit(bgRgb);
+      image.setPixelRgb(x, y, c[0], c[1], c[2]);
     }
   }
   for (var y = blobY; y < blobY + blobH; y++) {
     for (var x = blobX; x < blobX + blobW; x++) {
       if (inBite(x, y)) continue;
-      image.setPixelRgb(
-        x,
-        y,
-        jitter(blobRgb[0]),
-        jitter(blobRgb[1]),
-        jitter(blobRgb[2]),
-      );
+      final c = jit(blobRgb);
+      image.setPixelRgb(x, y, c[0], c[1], c[2]);
     }
   }
   return image;
@@ -79,16 +76,15 @@ img.Image _canvasWithDisk({
   required List<int> blobRgb,
 }) {
   final rng = Random(42);
-  int jitter(int v) => (v + rng.nextInt(7) - 3).clamp(0, 255);
 
   final image = img.Image(width: canvasW, height: canvasH);
   final r2 = radius * radius;
   for (var y = 0; y < canvasH; y++) {
     for (var x = 0; x < canvasW; x++) {
       final dx = x - centerX, dy = y - centerY;
-      final inDisk = dx * dx + dy * dy <= r2;
-      final rgb = inDisk ? blobRgb : bgRgb;
-      image.setPixelRgb(x, y, jitter(rgb[0]), jitter(rgb[1]), jitter(rgb[2]));
+      final rgb = dx * dx + dy * dy <= r2 ? blobRgb : bgRgb;
+      final d = rng.nextInt(7) - 3;
+      image.setPixelRgb(x, y, (rgb[0] + d).clamp(0, 255), (rgb[1] + d).clamp(0, 255), (rgb[2] + d).clamp(0, 255));
     }
   }
   return image;
