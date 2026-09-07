@@ -85,20 +85,29 @@ raw/
     └── IMPURITIES/*.jpg
 ```
 
-Two barley collection sessions exist as of 2026-09-06:
-`batch_2026-08_lot1` (158 images, warm lighting) and
-`batch_2026-09-06_lot2` (270 images, cooler lighting, more seeds per
-frame). Kept as separate batch folders so `split_dataset.py` can hold one
-whole session out as test. That first real cross-session test showed the
-LightGBM model does **not** generalise between sessions (macro-F1 ~0.1,
-ROC-AUC ~0.5) — colour and absolute-pixel-size features are acting as a
-session fingerprint. See `docs/VALIDATION.md` for the numbers and the
-normalisation fix that has to come next.
+Both barley sets so far are **single-seed macro shots** — one grain per
+photo. Run `prepare_dataset.py --one-seed` for these: without it, every
+speck of background texture and every shadow becomes a mislabelled "seed"
+row. (Multi-seed batch photos, which is what the app captures, don't use
+that flag.)
 
-(Watch for doubly-nested label folders when importing a zip — V2 arrived
-as `Shriveled/Shriveled/*.jpg`; `prepare_dataset.py` only looks one level
-deep for images under a label folder, so a nested folder silently
-contributes zero seeds.)
+Two sessions exist as of 2026-09-06: `batch_2026-08_lot1` (158 images,
+white paper) and `batch_2026-09-06_lot2` (270 images, **blue woven mat**).
+The first real cross-session test showed the model does not generalise —
+and the main reason is lot2's background: the mat's texture and lighting
+gradient fragment into 80+ spurious blobs per photo, so even `--one-seed`
+picks a texture patch instead of the grain about half the time. See
+`docs/VALIDATION.md`.
+
+**Background matters more than anything else here.** Shoot on a plain,
+light, matte, untextured surface — plain white/off-white paper. No woven
+mats, no patterned fabric, no glossy surfaces (§8/§10 of the build spec).
+A good background is what makes the classical detector work; a bad one
+can't be fixed downstream.
+
+(Also watch for doubly-nested label folders when importing a zip — lot2
+arrived as `Shriveled/Shriveled/*.jpg`; `prepare_dataset.py` only looks
+one level deep, so a nested folder silently contributes zero seeds.)
 
 - One image = one photographed group of seeds (10–50, matching the app's
   capture guidance in `app/lib/presentation/screens/scan_flow_screen.dart`),

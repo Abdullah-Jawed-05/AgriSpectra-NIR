@@ -65,16 +65,44 @@ test. On genuinely held-out data there is no signal.
    ~20% of lot2's — most of lot1's "seeds" aren't single grains. The two
    batches aren't the same kind of object.
 
+### The real cause (2026-09-06, after looking at the actual photos)
+
+Both barley sets are **single-seed macro shots** — one grain per photo.
+The "22 seeds/photo" from lot2 was the detector finding **one real grain
+plus 80+ spurious blobs on the background**: lot2 was shot on a **blue
+woven exercise mat** whose repeating dimple texture and lighting gradient
+fragment into dozens of connected components under Otsu. lot1 was shot on
+plain white paper (clean — ~1 blob). So lot2's ~5,000 "seed rows" were
+mostly mat texture with a quality label attached.
+
+Fixes applied:
+- `prepare_dataset.py --one-seed` + `segmentation.py::pick_primary_seed`:
+  for a single-subject photo, keep only the blob that looks like a
+  coherent coloured object (saturation × convexity, plausible size). Not
+  used on-device (real scans are multi-seed) — a dataset-prep concern.
+
+With `--one-seed` (378 clean-ish rows instead of ~7,000):
+
+| Direction | macro-F1 | ROC-AUC |
+|---|---|---|
+| train lot1 → test lot2 | 0.23 | 0.59 |
+| train lot2 → test lot1 | 0.12 | 0.45 |
+| lot2-only (leaky) | 0.34 | 0.64 |
+
+Better than random for lot1→lot2, but lot2-trained is still useless
+because ~half of lot2's picked crops are *still* mat texture, not seed —
+`pick_primary_seed` can't reliably rescue thin straw impurities or small
+broken fragments against that background.
+
 **What this means:**
-- **Do NOT wire V1 into the app.** Strictly worse than the V0 rule engine
-  on real new photos.
-- The normalisation and drop-absolute-geometry changes are kept — they're
-  correct regardless, and #1 measurably fixed the colour drift.
-- The blocker now is **data collection consistency**, not modelling. Need
-  ≥2 sessions shot the *same* way — spread seeds, ~10–50 per frame,
-  matching the app guidance (lot2 is the template; lot1 predates settled
-  capture practice). "Make Our App Better" + the date-batched export now
-  produce exactly this as the app gets used across days.
+- **Do NOT wire V1 into the app.** Strictly worse than the V0 rule engine.
+- The normalisation, drop-absolute-geometry, and `--one-seed` changes are
+  all kept — correct regardless.
+- **The blocker is the capture background.** lot2's textured mat violates
+  the build spec's own guidance (§8 "avoid excessive background clutter",
+  §10 "background sufficiently distinct from the seeds"). The next session
+  has to be on a **plain, light, matte, untextured** surface — plain white
+  paper, like lot1. Then re-run this whole cross-session test.
 - The single-session "sanity check" numbers below are kept only as a
   record of how misleading a leaky split is — 0.62 vs 0.10, same model.
 

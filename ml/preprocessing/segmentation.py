@@ -160,6 +160,41 @@ def geometry_from_mask(mask: np.ndarray) -> dict:
     }
 
 
+def pick_primary_seed(seeds: list[SegmentedSeed]) -> SegmentedSeed | None:
+    """For a photo known to contain one subject — a macro shot of a single
+    seed, which is how the barley training sets were collected — pick the
+    blob that is actually the seed out of everything `find_seeds` returned.
+    The rest is background: mat/paper texture, shadows, lighting gradients.
+
+    Scores each blob by how much it looks like a coherent coloured object
+    (mean saturation of its own pixels x convexity, with a mild size
+    preference), inside a plausible size band relative to the median blob
+    — this drops the one giant gradient region and the specks. NOT used by
+    the on-device pipeline, which scans real multi-seed batches; this is a
+    `prepare_dataset.py --one-seed` concern only.
+    """
+    import statistics
+
+    if len(seeds) <= 1:
+        return seeds[0] if seeds else None
+
+    med = statistics.median(s.area_px for s in seeds)
+    lo, hi = 0.2 * med, 20 * med
+    candidates = [s for s in seeds if lo <= s.area_px <= hi] or seeds
+
+    best, best_score = None, -1.0
+    for s in candidates:
+        m = s.mask > 0
+        if not m.any():
+            continue
+        hsv = cv2.cvtColor(s.crop_bgr, cv2.COLOR_BGR2HSV)
+        saturation = float(hsv[m][:, 1].mean()) / 255
+        score = saturation * max(s.convexity, 0.01) * (s.area_px**0.25)
+        if score > best_score:
+            best, best_score = s, score
+    return best
+
+
 def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[SegmentedSeed]:
     h0, w0 = image_bgr.shape[:2]
     scale = min(1.0, working_max_dim / max(h0, w0))

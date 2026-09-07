@@ -48,7 +48,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from preprocessing.features import extract_all  # noqa: E402
-from preprocessing.segmentation import find_seeds  # noqa: E402
+from preprocessing.segmentation import find_seeds, pick_primary_seed  # noqa: E402
 
 VALID_LABELS = {
     "GOOD",
@@ -70,6 +70,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--raw-dir", required=True, type=Path, help="raw/<crop>/[<batch_id>/]<label>/*.jpg")
     parser.add_argument("--out", required=True, type=Path, help="output directory for features.csv + crops/")
+    parser.add_argument(
+        "--one-seed",
+        action="store_true",
+        help="keep only the single best blob per image (for single-seed macro shots — "
+        "otherwise background texture and shadows become mislabelled 'seed' rows)",
+    )
     args = parser.parse_args()
 
     if not args.raw_dir.exists():
@@ -126,6 +132,9 @@ def main() -> None:
                     n_images += 1
 
                     seeds = find_seeds(image)
+                    if args.one_seed:
+                        primary = pick_primary_seed(seeds)
+                        seeds = [primary] if primary is not None else []
                     for seed in seeds:
                         features = extract_all(seed)
                         crop_filename = f"{crop_name}_{batch_id}_{image_path.stem}_{seed.seed_id}.png"
