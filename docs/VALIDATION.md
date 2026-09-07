@@ -5,6 +5,53 @@ elsewhere (UI copy, report text, demo scripts) stay honest. Update this
 file whenever validation status changes — do not let ARCHITECTURE.md or
 the app's UI copy get ahead of what's actually been tested.
 
+## Model V1 — cross-session evaluation (2026-09-06): it does not generalize
+
+A second barley collection was captured (`batch_2026-09-06_lot2`, 270
+images / ~5,100 seed rows, shot on a different day, different
+lighting/setup from the first). That makes a **real** held-out test
+possible for the first time: train on one whole session, test on the
+other — `split_dataset.py --test-batch <id>`, run both directions.
+
+**Result: the LightGBM model trained on classical features does not
+transfer across sessions at all.**
+
+| Direction | Train | Test | macro-F1 | balanced acc | ROC-AUC (ovr) |
+|---|---|---|---|---|---|
+| A | lot1 (Aug) + aug | lot2 (Sep) | **0.10** | 0.21 | **0.50** |
+| B | lot2 (Sep) + aug | lot1 (Aug) | **0.15** | 0.19 | **0.46** |
+
+ROC-AUC ≈ 0.5 is random. The earlier 0.62 macro-F1 (below) was **entirely
+leakage** — near-duplicate seeds from one shoot sitting in both train and
+test. On genuinely held-out data there is no signal.
+
+**Why** (from comparing feature medians between the two batches):
+- **Colour is a session fingerprint, not a quality signal.** lot1 median
+  `mean_r` 150 / `mean_b` 120 (warm); lot2 `mean_r` 130 / `mean_b` 145
+  (cool). The pipeline does **no white-balance or exposure normalisation**
+  (§8 of the build spec says preprocessing "should attempt" this — it
+  doesn't), so every colour feature encodes which session, not which
+  class.
+- **Geometry uses absolute pixels.** lot1 median `area_px` 1180, lot2 338
+  — a ~3.5× scale difference (different framing / seed density / camera).
+  `area_px`, `perimeter_px`, `width_px`, `length_px` are absolute counts;
+  they carry session, not shape. (`aspect_ratio`, `circularity`,
+  `eccentricity`, `convexity` are already scale-invariant and fine.)
+- `edge_density` inherits the scale problem (0.20 vs 0.40) — edge pixels
+  are a bigger fraction of a smaller blob.
+
+**What this means:**
+- **Do NOT wire V1 into the app.** It would be strictly worse than the V0
+  rule engine on real new photos.
+- This is not "classical features don't work" — it's "the pipeline skips
+  the normalisation that would make them session-independent." The fix
+  (colour normalisation + scale-invariant geometry, in both `app/lib/ml/`
+  and `ml/preprocessing/` for parity) is the next real work, and has to
+  land before any V1-in-app conversation.
+- The single-session "sanity check" numbers below are kept only as a
+  record of how misleading a leaky split is — 0.62 vs 0.10 on the same
+  model, same features.
+
 ## Model V1 — first training run (2026-09-05)
 
 `ml/training/train_baseline.py` (LightGBM) trained on the full barley

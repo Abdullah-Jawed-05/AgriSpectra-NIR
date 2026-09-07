@@ -85,10 +85,20 @@ raw/
     └── IMPURITIES/*.jpg
 ```
 
-The barley reference set that exists today is a 2-level collection (five
-label folders, one shoot) — `prepare_dataset.py` treats it as a single
-implicit batch, which is why the split can't yet truly separate train from
-test (see Splitting, and `docs/VALIDATION.md`).
+Two barley collection sessions exist as of 2026-09-06:
+`batch_2026-08_lot1` (158 images, warm lighting) and
+`batch_2026-09-06_lot2` (270 images, cooler lighting, more seeds per
+frame). Kept as separate batch folders so `split_dataset.py` can hold one
+whole session out as test. That first real cross-session test showed the
+LightGBM model does **not** generalise between sessions (macro-F1 ~0.1,
+ROC-AUC ~0.5) — colour and absolute-pixel-size features are acting as a
+session fingerprint. See `docs/VALIDATION.md` for the numbers and the
+normalisation fix that has to come next.
+
+(Watch for doubly-nested label folders when importing a zip — V2 arrived
+as `Shriveled/Shriveled/*.jpg`; `prepare_dataset.py` only looks one level
+deep for images under a label folder, so a nested folder silently
+contributes zero seeds.)
 
 - One image = one photographed group of seeds (10–50, matching the app's
   capture guidance in `app/lib/presentation/screens/scan_flow_screen.dart`),

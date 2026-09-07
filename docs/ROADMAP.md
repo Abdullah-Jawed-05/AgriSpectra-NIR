@@ -13,14 +13,19 @@ this roadmap doesn't restate a checklist that the code already shows.
 
 ## Now / next
 
-- A first labelled **barley** dataset exists (~158 images, five folders:
-  GOOD / DAMAGED / BROKEN / SHRIVELED / IMPURITIES; one collection session).
-  App + pipeline are scoped to barley to match — see
-  [`DATASET_GUIDE.md`](DATASET_GUIDE.md).
-- Train Model V1 for barley (`ml/training/train_baseline.py`) and replace
-  `RuleBasedClassifier` + `ImpurityDetector` as the app's default
-  classifier, keeping both available as a fallback if the trained model is
-  missing/corrupt (§58 error handling).
+- Two labelled **barley** sessions exist (158 + 270 images). The first
+  real cross-session test (2026-09-06) showed Model V1 **does not
+  generalise** — macro-F1 ~0.1, ROC-AUC ~0.5 (see
+  [`VALIDATION.md`](VALIDATION.md)). Colour features and absolute-pixel
+  geometry are a session fingerprint.
+- **Next real work: preprocessing normalisation** (§8) — white-balance /
+  exposure normalisation and scale-invariant geometry features, in both
+  `app/lib/ml/` and `ml/preprocessing/` (parity). This has to land before
+  any "wire V1 into the app" step; V1 as-is would be worse than the V0
+  rule engine on real new photos.
+- Only after that: retrain, re-run the cross-session test, and if it holds
+  up, replace `RuleBasedClassifier` + `ImpurityDetector` as the default
+  (keeping both as a §58 fallback).
 
 ## +12 weeks
 
