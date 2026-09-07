@@ -40,17 +40,43 @@ test. On genuinely held-out data there is no signal.
 - `edge_density` inherits the scale problem (0.20 vs 0.40) — edge pixels
   are a bigger fraction of a smaller blob.
 
+### What was tried (2026-09-06) and what it showed
+
+1. **White-balance + exposure normalisation** (`_normaliseLighting`, added
+   to both `seed_finder.dart` and `segmentation.py`): gray-world plus an
+   exposure pull to mid-grey, before any pixel is read. Aligned `mean_r`/
+   `mean_g` across the two batches well, `mean_b` less so. **Cross-session
+   macro-F1 stayed ~0.12** — it helped colour but not the shape features.
+2. **Dropped `area_px` / `perimeter_px` / `width_px` / `length_px`** from
+   the trained feature set (kept the scale-invariant ratios). No
+   cross-session improvement either.
+3. **Diagnostic — a V2-only stratified split** (leaky, but consistent
+   photography): macro-F1 **0.48**, ROC-AUC **0.83**. The features *do*
+   carry real signal when photography is consistent.
+4. **Diagnostic — feature medians by batch** after normalisation:
+   `aspect_ratio` 2.2 vs 3.8, `edge_density` 0.06 vs 0.40, `circularity`
+   0.17 vs 0.13 — the *shape* features themselves differ hugely between
+   sessions, even the scale-invariant ones.
+5. **Root cause — the two sessions were photographed differently.** lot1
+   averages 4 seeds/photo (often clumped, so segmentation returns a few
+   big irregular blobs); lot2 averages 22 seeds/photo, spread out,
+   matching the app's own capture guidance (so it returns many clean
+   single-seed blobs). An area filter drops ~80% of lot1's rows but only
+   ~20% of lot2's — most of lot1's "seeds" aren't single grains. The two
+   batches aren't the same kind of object.
+
 **What this means:**
-- **Do NOT wire V1 into the app.** It would be strictly worse than the V0
-  rule engine on real new photos.
-- This is not "classical features don't work" — it's "the pipeline skips
-  the normalisation that would make them session-independent." The fix
-  (colour normalisation + scale-invariant geometry, in both `app/lib/ml/`
-  and `ml/preprocessing/` for parity) is the next real work, and has to
-  land before any V1-in-app conversation.
+- **Do NOT wire V1 into the app.** Strictly worse than the V0 rule engine
+  on real new photos.
+- The normalisation and drop-absolute-geometry changes are kept — they're
+  correct regardless, and #1 measurably fixed the colour drift.
+- The blocker now is **data collection consistency**, not modelling. Need
+  ≥2 sessions shot the *same* way — spread seeds, ~10–50 per frame,
+  matching the app guidance (lot2 is the template; lot1 predates settled
+  capture practice). "Make Our App Better" + the date-batched export now
+  produce exactly this as the app gets used across days.
 - The single-session "sanity check" numbers below are kept only as a
-  record of how misleading a leaky split is — 0.62 vs 0.10 on the same
-  model, same features.
+  record of how misleading a leaky split is — 0.62 vs 0.10, same model.
 
 ## Model V1 — first training run (2026-09-05)
 

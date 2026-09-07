@@ -52,6 +52,13 @@ class ClassicalCVSeedFinder implements SeedFinder {
   @override
   List<SegmentedSeed> find(img.Image original) {
     final image = _downscale(original, workingMaxDimension);
+    // Normalise white balance + exposure before anything reads a pixel
+    // (§8). Without this, colour features and the Otsu threshold encode
+    // which lighting the photo was shot under, not the seed — a model
+    // trained on one collection session then scores near-random on the
+    // next (see docs/VALIDATION.md's cross-session result). Mirrored in
+    // ml/preprocessing/segmentation.py::_normalise_lighting.
+    _normaliseLighting(image);
     // img.grayscale() mutates its argument in place and returns the same
     // object — pass it a clone, or `image` itself desaturates, and every
     // per-seed crop cut from it downstream (`_buildSegmentedSeed`'s `crop`,
@@ -103,6 +110,53 @@ class ClassicalCVSeedFinder implements SeedFinder {
             confidence: (s.geometry.circularity.clamp(0.0, 1.0) * 0.6 + 0.4),
           ))
       .toList();
+
+  /// Gray-world white balance (pull each channel's mean toward the overall
+  /// mean) followed by an exposure pull (bring that overall mean to a
+  /// fixed mid-grey target). Mutates [image] in place. Per-channel scale
+  /// factors are clamped so a degenerate frame (e.g. one dominant colour)
+  /// can't blow the image out. The exact same math runs in
+  /// ml/preprocessing/segmentation.py — keep them identical.
+  static const double _exposureTargetMean = 128;
+  static const double _minChannelScale = 0.5;
+  static const double _maxChannelScale = 2.0;
+
+  void _normaliseLighting(img.Image image) {
+    final w = image.width, h = image.height;
+    final n = w * h;
+    if (n == 0) return;
+
+    double sumR = 0, sumG = 0, sumB = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        sumR += p.r;
+        sumG += p.g;
+        sumB += p.b;
+      }
+    }
+    final meanR = sumR / n, meanG = sumG / n, meanB = sumB / n;
+    final overall = (meanR + meanG + meanB) / 3;
+    if (overall <= 0) return;
+
+    final exposure = (_exposureTargetMean / overall).clamp(_minChannelScale, _maxChannelScale);
+    final scaleR = (overall / meanR).clamp(_minChannelScale, _maxChannelScale) * exposure;
+    final scaleG = (overall / meanG).clamp(_minChannelScale, _maxChannelScale) * exposure;
+    final scaleB = (overall / meanB).clamp(_minChannelScale, _maxChannelScale) * exposure;
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final p = image.getPixel(x, y);
+        image.setPixelRgb(
+          x,
+          y,
+          (p.r * scaleR).round().clamp(0, 255),
+          (p.g * scaleG).round().clamp(0, 255),
+          (p.b * scaleB).round().clamp(0, 255),
+        );
+      }
+    }
+  }
 
   img.Image _downscale(img.Image image, int maxDim) {
     if (max(image.width, image.height) <= maxDim) return image;

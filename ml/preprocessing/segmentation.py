@@ -19,6 +19,34 @@ import numpy as np
 MIN_AREA_FRACTION = 0.00025
 MAX_AREA_FRACTION = 0.08
 
+_EXPOSURE_TARGET_MEAN = 128.0
+_MIN_CHANNEL_SCALE = 0.5
+_MAX_CHANNEL_SCALE = 2.0
+
+
+def _normalise_lighting(image_bgr: np.ndarray) -> np.ndarray:
+    """Gray-world white balance + an exposure pull to a fixed mid-grey.
+    Without this, colour features and the Otsu threshold encode which
+    lighting the photo was shot under, not the seed (see
+    docs/VALIDATION.md's cross-session result). Must stay identical to
+    app/lib/ml/seed_finder.dart::_normaliseLighting.
+    """
+    b, g, r = (image_bgr[:, :, i].mean() for i in range(3))
+    overall = (r + g + b) / 3
+    if overall <= 0:
+        return image_bgr
+
+    exposure = float(np.clip(_EXPOSURE_TARGET_MEAN / overall, _MIN_CHANNEL_SCALE, _MAX_CHANNEL_SCALE))
+    scale_b = float(np.clip(overall / b, _MIN_CHANNEL_SCALE, _MAX_CHANNEL_SCALE)) * exposure
+    scale_g = float(np.clip(overall / g, _MIN_CHANNEL_SCALE, _MAX_CHANNEL_SCALE)) * exposure
+    scale_r = float(np.clip(overall / r, _MIN_CHANNEL_SCALE, _MAX_CHANNEL_SCALE)) * exposure
+
+    out = image_bgr.astype(np.float32)
+    out[:, :, 0] *= scale_b
+    out[:, :, 1] *= scale_g
+    out[:, :, 2] *= scale_r
+    return np.clip(np.round(out), 0, 255).astype(np.uint8)
+
 
 @dataclass
 class SegmentedSeed:
@@ -144,6 +172,7 @@ def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[Segme
         if scale < 1.0
         else image_bgr
     )
+    image = _normalise_lighting(image)
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     dark_mask, light_mask = _otsu_binary(gray)

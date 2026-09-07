@@ -35,6 +35,10 @@ NON_FEATURE_COLUMNS = {
     "mask_file",
     "label",
     "is_augmented",
+    "area_px",
+    "perimeter_px",
+    "width_px",
+    "length_px",
 }
 
 

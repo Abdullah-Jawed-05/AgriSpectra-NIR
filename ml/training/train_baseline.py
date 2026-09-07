@@ -37,6 +37,14 @@ NON_FEATURE_COLUMNS = {
     "mask_file",
     "label",
     "is_augmented",
+    # Absolute pixel measurements: framing / seed-density / camera-distance
+    # artefacts, not shape. They were a session fingerprint in the first
+    # cross-session test (docs/VALIDATION.md). The scale-invariant shape
+    # features (aspect_ratio, circularity, eccentricity, convexity) stay.
+    "area_px",
+    "perimeter_px",
+    "width_px",
+    "length_px",
 }
 
 try:

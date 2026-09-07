@@ -84,6 +84,18 @@ was actually *nearest*, a second bug this fixes), but the two libraries'
 bilinear kernels aren't bit-identical, so pixel values a few percent apart
 near edges are expected. Verified acceptable — see below.
 
+**Lighting normalisation (2026-09-06):** `_normaliseLighting`
+(`seed_finder.dart` / `segmentation.py::_normalise_lighting`) runs
+gray-world white balance + an exposure pull to mid-grey on the working
+image before anything reads a pixel — same math both sides. Added after
+the first cross-session test showed colour features were acting as a
+session fingerprint (`docs/VALIDATION.md`). Re-verify parity when
+touching it: it changes every colour feature and the Otsu threshold.
+Absolute-pixel geometry (`area_px`, `perimeter_px`, `width_px`,
+`length_px`) is still computed and stored (the result screen shows it)
+but excluded from the trained feature set (`NON_FEATURE_COLUMNS` in
+`train_baseline.py`) — it's framing, not shape.
+
 **Verification:** `ml/scripts/parity_check.py` and
 `app/test/tool/parity_check_dev.dart` run the two pipelines over the same
 photo and print every feature as JSON for diffing (dev tools, not part of

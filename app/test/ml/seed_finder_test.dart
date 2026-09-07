@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:agrispectra/ml/seed_finder.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
@@ -5,12 +7,14 @@ import 'package:image/image.dart' as img;
 /// A plain background with one filled rectangular blob, high-contrast
 /// enough for Otsu thresholding to isolate it cleanly.
 ///
-/// Both regions get a small deterministic per-pixel jitter rather than one
-/// flat color each. A perfectly flat two-color image is a degenerate case
-/// for this Otsu implementation: with only two distinct luminance values
-/// present, the computed threshold lands exactly on the darker one, and
-/// the strict `<` used for the dark-foreground polarity then excludes it.
-/// Real photos always carry that much noise on their own; synthetic
+/// Both regions get small pseudo-random per-pixel noise (seeded, so tests
+/// stay deterministic) rather than one flat colour each. A perfectly flat
+/// two-value image is a degenerate case for this Otsu implementation — the
+/// threshold lands exactly on the darker value and the strict `<` for the
+/// dark-foreground polarity then excludes it. The noise must be genuinely
+/// random, not a periodic pattern: a diagonal dither can fragment a blob
+/// into diagonal strips once lighting normalisation compresses its value
+/// range against the threshold. Real photos carry real sensor noise;
 /// fixtures have to add it deliberately.
 img.Image _canvasWithBlob({
   required int canvasW,
@@ -27,7 +31,8 @@ img.Image _canvasWithBlob({
   int? biteW,
   int? biteH,
 }) {
-  int jitter(int v, int x, int y) => (v + ((x * 7 + y * 13) % 5) - 2).clamp(0, 255);
+  final rng = Random(42);
+  int jitter(int v) => (v + rng.nextInt(7) - 3).clamp(0, 255);
   bool inBite(int x, int y) =>
       biteX != null &&
       x >= biteX &&
@@ -41,9 +46,9 @@ img.Image _canvasWithBlob({
       image.setPixelRgb(
         x,
         y,
-        jitter(bgRgb[0], x, y),
-        jitter(bgRgb[1], x, y),
-        jitter(bgRgb[2], x, y),
+        jitter(bgRgb[0]),
+        jitter(bgRgb[1]),
+        jitter(bgRgb[2]),
       );
     }
   }
@@ -53,9 +58,9 @@ img.Image _canvasWithBlob({
       image.setPixelRgb(
         x,
         y,
-        jitter(blobRgb[0], x, y),
-        jitter(blobRgb[1], x, y),
-        jitter(blobRgb[2], x, y),
+        jitter(blobRgb[0]),
+        jitter(blobRgb[1]),
+        jitter(blobRgb[2]),
       );
     }
   }
@@ -73,7 +78,8 @@ img.Image _canvasWithDisk({
   required List<int> bgRgb,
   required List<int> blobRgb,
 }) {
-  int jitter(int v, int x, int y) => (v + ((x * 7 + y * 13) % 5) - 2).clamp(0, 255);
+  final rng = Random(42);
+  int jitter(int v) => (v + rng.nextInt(7) - 3).clamp(0, 255);
 
   final image = img.Image(width: canvasW, height: canvasH);
   final r2 = radius * radius;
@@ -82,7 +88,7 @@ img.Image _canvasWithDisk({
       final dx = x - centerX, dy = y - centerY;
       final inDisk = dx * dx + dy * dy <= r2;
       final rgb = inDisk ? blobRgb : bgRgb;
-      image.setPixelRgb(x, y, jitter(rgb[0], x, y), jitter(rgb[1], x, y), jitter(rgb[2], x, y));
+      image.setPixelRgb(x, y, jitter(rgb[0]), jitter(rgb[1]), jitter(rgb[2]));
     }
   }
   return image;
@@ -102,7 +108,7 @@ void main() {
         blobY: 100,
         blobW: 60,
         blobH: 50,
-        bgRgb: [245, 245, 245],
+        bgRgb: [170, 170, 170],
         blobRgb: [200, 80, 40], // distinctly non-gray: r != g != b
       );
 
@@ -113,12 +119,11 @@ void main() {
       final p = crop.getPixel(crop.width ~/ 2, crop.height ~/ 2);
       // If img.grayscale() had mutated the source image in place (the bug
       // this guards against), every channel here would have collapsed to
-      // the same luminance value instead of keeping the injected color.
-      expect((p.r - p.g).abs(), greaterThan(20));
-      expect((p.g - p.b).abs(), greaterThan(10));
-      expect(p.r.round(), closeTo(200, 3));
-      expect(p.g.round(), closeTo(80, 3));
-      expect(p.b.round(), closeTo(40, 3));
+      // the same luminance value. Exact values aren't checked — lighting
+      // normalisation legitimately rescales them — only that the injected
+      // colour's channel separation survives (r clearly > g clearly > b).
+      expect(p.r - p.g, greaterThan(15));
+      expect(p.g - p.b, greaterThan(8));
     },
   );
 
@@ -130,7 +135,7 @@ void main() {
       blobY: 100,
       blobW: 60,
       blobH: 60,
-      bgRgb: [245, 245, 245],
+      bgRgb: [170, 170, 170],
       blobRgb: [40, 40, 40],
     );
     final disk = _canvasWithDisk(
@@ -139,7 +144,7 @@ void main() {
       centerX: 200,
       centerY: 150,
       radius: 34,
-      bgRgb: [245, 245, 245],
+      bgRgb: [170, 170, 170],
       blobRgb: [40, 40, 40],
     );
 
@@ -164,7 +169,7 @@ void main() {
       blobY: 100,
       blobW: 70,
       blobH: 50,
-      bgRgb: [245, 245, 245],
+      bgRgb: [170, 170, 170],
       blobRgb: [40, 40, 40],
     );
     // Same footprint as `solid`, but with a rectangular bite taken out of
@@ -176,7 +181,7 @@ void main() {
       blobY: 100,
       blobW: 70,
       blobH: 50,
-      bgRgb: [245, 245, 245],
+      bgRgb: [170, 170, 170],
       blobRgb: [40, 40, 40],
       biteX: 150,
       biteY: 115,
@@ -201,7 +206,7 @@ void main() {
       blobY: 130,
       blobW: 150,
       blobH: 20,
-      bgRgb: [245, 245, 245],
+      bgRgb: [170, 170, 170],
       blobRgb: [40, 40, 40],
     );
     final seeds = finder.find(image);
