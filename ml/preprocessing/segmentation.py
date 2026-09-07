@@ -48,6 +48,82 @@ def _normalise_lighting(image_bgr: np.ndarray) -> np.ndarray:
     return np.clip(np.round(out), 0, 255).astype(np.uint8)
 
 
+# --- Background-texture gate -------------------------------------------------
+# Mirrors app/lib/ml/image_quality_gate.dart::_tileTextureStats + the hard
+# reject rule. A seed photo shot on a woven mat / fabric / wood grain /
+# printed surface fragments into dozens of spurious blobs; such images poison
+# a training set (see docs/VALIDATION.md — Barley Dataset V2). Tuned on 158
+# clean + 270 textured barley photos: 0% false-reject on the clean set,
+# ~98% caught on the textured set.
+_TEXTURE_WORKING_MAX = 900
+_TEXTURE_TILE_PX = 48
+_TEXTURE_BUSY_TILE_LAPVAR = 40.0
+_TEXTURE_FLAT_TILE_STDDEV = 6.0
+_TEXTURE_REJECT_BUSY_RATIO = 0.62
+_TEXTURE_REJECT_MEDIAN_STDDEV = 3.2
+
+_LAPLACIAN_4 = np.array([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=np.float32)
+
+
+@dataclass
+class BackgroundTexture:
+    median_tile_stddev: float
+    busy_tile_ratio: float
+    flat_tile_ratio: float
+
+    @property
+    def is_textured(self) -> bool:
+        return (
+            self.busy_tile_ratio > _TEXTURE_REJECT_BUSY_RATIO
+            or self.median_tile_stddev > _TEXTURE_REJECT_MEDIAN_STDDEV
+        )
+
+
+def assess_background_texture(image_bgr: np.ndarray) -> BackgroundTexture:
+    """Grid pass over a downscaled grey copy: per tile, the luminance
+    std-dev and the variance of a 4-neighbour Laplacian. The *median*
+    tile std-dev tracks the background (robust to a few seed tiles); the
+    busy-tile ratio measures how much of the frame carries real
+    high-frequency structure.
+    """
+    h0, w0 = image_bgr.shape[:2]
+    scale = min(1.0, _TEXTURE_WORKING_MAX / max(h0, w0))
+    img = (
+        cv2.resize(image_bgr, (int(w0 * scale), int(h0 * scale)), interpolation=cv2.INTER_AREA)
+        if scale < 1.0
+        else image_bgr
+    )
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    lap = cv2.filter2D(gray, cv2.CV_32F, _LAPLACIAN_4, borderType=cv2.BORDER_REFLECT_101)
+
+    h, w = gray.shape
+    tile = _TEXTURE_TILE_PX
+    std_devs: list[float] = []
+    busy = flat = tiles = 0
+    for ty in range(0, h - tile + 1, tile):
+        for tx in range(0, w - tile + 1, tile):
+            # sample every other pixel — parity with the Dart gate
+            g_tile = gray[ty : ty + tile : 2, tx : tx + tile : 2]
+            # interior only for the Laplacian, as the Dart loop does
+            l_tile = lap[ty + 1 : ty + tile - 1 : 2, tx + 1 : tx + tile - 1 : 2]
+            if g_tile.size == 0 or l_tile.size == 0:
+                continue
+            std_devs.append(float(g_tile.std()))
+            if float(l_tile.var()) > _TEXTURE_BUSY_TILE_LAPVAR:
+                busy += 1
+            if float(g_tile.std()) < _TEXTURE_FLAT_TILE_STDDEV:
+                flat += 1
+            tiles += 1
+
+    if tiles == 0:
+        return BackgroundTexture(0.0, 0.0, 1.0)
+    return BackgroundTexture(
+        median_tile_stddev=float(np.median(std_devs)),
+        busy_tile_ratio=busy / tiles,
+        flat_tile_ratio=flat / tiles,
+    )
+
+
 @dataclass
 class SegmentedSeed:
     seed_id: str

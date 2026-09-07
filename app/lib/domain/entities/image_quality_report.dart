@@ -8,6 +8,12 @@ class ImageQualityReport {
   final double exposureScore;
   final double glareScore;
   final double backgroundScore;
+
+  /// How free of background texture the frame is: 1.0 = clean plain
+  /// backdrop, 0.0 = a woven/printed/grained surface that fragments
+  /// segmentation. Folded into [backgroundScore]; kept separately so the
+  /// "why was this rejected" copy can point at the real cause.
+  final double textureScore;
   final List<String> warnings;
 
   const ImageQualityReport({
@@ -17,6 +23,7 @@ class ImageQualityReport {
     required this.exposureScore,
     required this.glareScore,
     required this.backgroundScore,
+    this.textureScore = 1.0,
     required this.warnings,
   });
 
@@ -27,6 +34,7 @@ class ImageQualityReport {
         'exposure_score': exposureScore,
         'glare_score': glareScore,
         'background_score': backgroundScore,
+        'texture_score': textureScore,
         'warnings': warnings,
       };
 }

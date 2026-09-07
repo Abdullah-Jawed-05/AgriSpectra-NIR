@@ -48,7 +48,11 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from preprocessing.features import extract_all  # noqa: E402
-from preprocessing.segmentation import find_seeds, pick_primary_seed  # noqa: E402
+from preprocessing.segmentation import (  # noqa: E402
+    assess_background_texture,
+    find_seeds,
+    pick_primary_seed,
+)
 
 VALID_LABELS = {
     "GOOD",
@@ -76,6 +80,13 @@ def main() -> None:
         help="keep only the single best blob per image (for single-seed macro shots — "
         "otherwise background texture and shadows become mislabelled 'seed' rows)",
     )
+    parser.add_argument(
+        "--allow-textured-bg",
+        action="store_true",
+        help="do NOT skip images whose background is a woven mat / fabric / wood grain / "
+        "printed surface (the app's quality gate rejects these at capture time; they "
+        "fragment into dozens of spurious 'seed' rows — see docs/VALIDATION.md)",
+    )
     args = parser.parse_args()
 
     if not args.raw_dir.exists():
@@ -97,6 +108,7 @@ def main() -> None:
     rows = []
     n_images = 0
     n_seeds = 0
+    n_textured_skipped = 0
 
     for crop_dir in sorted(p for p in args.raw_dir.iterdir() if p.is_dir()):
         crop_name = crop_dir.name
@@ -130,6 +142,19 @@ def main() -> None:
                         print(f"WARNING: could not read {image_path}", file=sys.stderr)
                         continue
                     n_images += 1
+
+                    if not args.allow_textured_bg:
+                        texture = assess_background_texture(image)
+                        if texture.is_textured:
+                            n_textured_skipped += 1
+                            print(
+                                f"WARNING: skipping {image_path.name} — textured background "
+                                f"(median tile std {texture.median_tile_stddev:.1f}, "
+                                f"busy tiles {texture.busy_tile_ratio:.0%}). "
+                                "Pass --allow-textured-bg to keep it.",
+                                file=sys.stderr,
+                            )
+                            continue
 
                     seeds = find_seeds(image)
                     if args.one_seed:
@@ -168,6 +193,11 @@ def main() -> None:
     df.to_csv(out_csv, index=False)
 
     print(f"\nProcessed {n_images} images -> {n_seeds} seed rows.")
+    if n_textured_skipped:
+        print(
+            f"Skipped {n_textured_skipped} image(s) for textured backgrounds "
+            "(--allow-textured-bg to keep them)."
+        )
     print(f"Wrote {out_csv}")
     print(f"Wrote {n_seeds} crop images to {crops_dir}")
     print("\nLabel distribution:")

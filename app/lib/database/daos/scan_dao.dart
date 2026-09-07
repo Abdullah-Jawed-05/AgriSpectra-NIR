@@ -287,6 +287,7 @@ class ScanDao {
         exposureScore: (json['exposure_score'] as num).toDouble(),
         glareScore: (json['glare_score'] as num).toDouble(),
         backgroundScore: (json['background_score'] as num).toDouble(),
+        textureScore: (json['texture_score'] as num?)?.toDouble() ?? 1.0,
         warnings: (json['warnings'] as List).cast<String>(),
       );
 }

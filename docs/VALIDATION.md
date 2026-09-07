@@ -103,6 +103,36 @@ broken fragments against that background.
   §10 "background sufficiently distinct from the seeds"). The next session
   has to be on a **plain, light, matte, untextured** surface — plain white
   paper, like lot1. Then re-run this whole cross-session test.
+
+### Background-texture gate (2026-09-07)
+
+To stop this happening again — in the app *and* in the training data — a
+tile-based texture check was added to
+`app/lib/ml/image_quality_gate.dart` (`_tileTextureStats`) and mirrored in
+`ml/preprocessing/segmentation.py` (`assess_background_texture`, used by
+`prepare_dataset.py`, skippable with `--allow-textured-bg`).
+
+It splits a downscaled grey copy into 48 px tiles and, per tile, measures
+luminance std-dev and the variance of a 4-neighbour Laplacian. The
+**median tile std-dev** tracks the background (robust to a few seed tiles)
+and the **busy-tile ratio** measures how much of the frame carries real
+high-frequency structure. A frame is hard-rejected when
+`median tile std-dev > 3.2` **or** `busy-tile ratio > 0.80`.
+
+Tuned on the two barley sessions (158 clean lot1 photos, 270 textured lot2
+photos):
+
+| threshold | lot1 flagged textured (want 0) | lot2 flagged textured (want all) |
+|---|---|---|
+| `busy>0.55 or med>2.8` | 0 / 158 | 269 / 270 |
+| `busy>0.80 or med>3.2` (shipped) | 0 / 158 | 263 / 270 (97.4%) |
+
+The shipped cutoff is deliberately loose on the busy-tile ratio (clean set
+p90 ≈ 0.42) so a higher-ISO capture isn't rejected for sensor noise — at
+that level the `median tile std-dev > 3.2` term is doing essentially all
+of the detection on its own. The old `backgroundScore`
+(global std-dev / 45) did the *opposite* of what's needed here — lot2's mat
+has a **high** global std-dev and scored *well* on it.
 - The single-session "sanity check" numbers below are kept only as a
   record of how misleading a leaky split is — 0.62 vs 0.10, same model.
 
@@ -220,12 +250,15 @@ limitations" section is required output, not optional polish.
 - **`broken` is never emitted by V0.** The rule engine has no reliable
   single-seed heuristic for fragmentation; only the trained V1 will
   classify it.
-- **Detection assumes a reasonably contrasting background.**
+- **Detection assumes a plain, contrasting background.**
   `ClassicalCVSeedFinder` tries both light-foreground and dark-foreground
   Otsu polarities and picks whichever finds more plausible blobs, but a
-  background close in luminance to the seeds will still fail to segment
-  cleanly — this is why the image quality gate checks background contrast
-  before running detection at all.
+  background close in luminance to the seeds — or a *textured* one (woven
+  mat, fabric, wood grain) — will still fail to segment cleanly. The image
+  quality gate now checks both before running detection: low global
+  contrast, and (since 2026-09-07) background texture via a tile-based
+  Laplacian pass. `prepare_dataset.py` applies the same texture check to
+  training images.
 - **No cultivar-specific tuning.** One rule set is applied regardless of
   crop or cultivar; nothing in the pipeline currently adjusts thresholds
   per crop even though `Crop` is tracked per scan.

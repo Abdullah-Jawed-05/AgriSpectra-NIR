@@ -66,6 +66,7 @@ VisionPipelineResult runVisionPipeline(Uint8List imageBytes) {
         exposureScore: 0,
         glareScore: 0,
         backgroundScore: 0,
+        textureScore: 0,
         warnings: ['Could not read the captured image.'],
       ),
       seedsDetected: 0,
