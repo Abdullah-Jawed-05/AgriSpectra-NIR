@@ -213,8 +213,9 @@ class _CaptureView extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: const Text(
-              'Place 10–50 seeds inside the guide.\n'
-              'Avoid overlapping seeds, strong shadows, glare, blur, and clutter.',
+              'Spread 10–50 seeds in a single layer inside the guide — '
+              'not touching, not piled.\n'
+              'Use a plain sheet of matte paper. Avoid shadows, glare and blur.',
               style: TextStyle(color: Colors.white, fontSize: 12.5, height: 1.4),
             ),
           ),
