@@ -8,95 +8,76 @@ import '../domain/value_objects/quality_class.dart';
 /// honestly, before a trained classifier (Model V1) is wired in — see
 /// docs/ML_PIPELINE.md and docs/VALIDATION.md.
 ///
-/// **Scope: V0 is a GOOD-vs-DAMAGED screen for barley, nothing more.**
-/// It was re-checked (2026-09-07) against the parity-fixed features on
-/// 154 hand-labelled single-seed barley photos, and the earlier rule set
-/// turned out to be badly miscalibrated for this crop:
+/// **Scope: V0 flags barley grains with dark / discoloured / off-colour
+/// damage, and nothing else.** It was re-checked twice against the
+/// parity-fixed features:
 ///
-///  - The shape branch (`circularity < 0.55 || eccentricity > 0.85`) fired
-///    on essentially every barley grain — they are naturally elongated
-///    (circularity ≈ 0.17, eccentricity ≈ 0.9) — routing ~all seeds to
-///    `shriveled`. Removed. Nothing in these features separates shrivelled
-///    barley from sound barley (§66: don't ship a cutoff that isn't there).
-///  - The discoloration branch was backwards: sound barley has a *higher*
-///    hue-variance `discolorationRatio` (natural aleurone/husk colour) than
-///    damaged. Removed.
-///  - The hole branch carried no signal for barley (sound ≈ damaged).
+///  - 2026-09-07, on 154 single-seed dorsal-side photos: the shape branch
+///    (`circularity < 0.55 || eccentricity > 0.85`) fired on essentially
+///    every barley grain (they are naturally elongated), routing ~all to
+///    `shriveled`; the discoloration branch was backwards; the hole branch
+///    had no signal. All removed.
+///  - 2026-09-08, on the "Front Split" set (healthy grains, ventral furrow
+///    facing the camera): the surviving **crack-like edge-density** branch
+///    fired on the natural husk venation and the ventral furrow — healthy
+///    ventral grains score ~0.47 on it, *higher* than the median damaged
+///    grain (~0.20). Edge density measures which face is up, not damage.
 ///    Removed.
 ///
-/// What's left — surface darkening and crack-like edge density — does
-/// separate the two classes (balanced accuracy ≈ 0.73 on that set: ~85%
-/// of sound seed kept, ~62% of damaged caught). Still a hand-tuned
-/// screening heuristic, not a validated cutoff.
-///
-/// `broken`, `shriveled` and `impurities` are therefore never returned
+/// What's left is `darkRegionRatio` — genuine dark spots, mould, rot,
+/// discoloured patches. On the reference sets a `> 0.22` cutoff keeps
+/// ~90% of sound grain (Front Split + old good) and catches ~50% of the
+/// old Damaged/Broken. A modest, honest screening heuristic — not a
+/// validated cutoff, and it does **not** detect cracks, splits, shrivel
+/// or breakage. `broken`, `shriveled` and `impurities` are never returned
 /// here: `impurities` is a batch-relative call handled by
-/// `ImpurityDetector` after this runs, and `broken` / `shriveled` need the
-/// trained V1.
+/// `ImpurityDetector` after this runs; `broken` / `shriveled` need V1.
 class RuleBasedClassifier {
   const RuleBasedClassifier();
 
-  /// Fraction of the seed surface that reads as dark / off-colour. Sound
-  /// barley sits near 0 (75th percentile 0.0 on the reference set);
-  /// damaged seed runs much higher (median ≈ 0.17).
-  static const double _highDamageDarkRatio = 0.10;
-
-  /// Crack-like high-frequency edge density. Sound barley median ≈ 0.01,
-  /// damaged ≈ 0.18 — the overlap is real, so this is deliberately set
-  /// past most sound seed rather than at the class midpoint.
-  static const double _highCrackRatio = 0.30;
+  /// Fraction of the seed surface reading as dark / off-colour. The
+  /// natural ventral furrow contributes a little (~0.08 median on healthy
+  /// grains), so the cutoff sits well above that; real discoloured /
+  /// mouldy damage runs much higher.
+  static const double _highDamageDarkRatio = 0.22;
 
   QualityPrediction classify(SeedFeatures features) {
     final evidence = <EvidenceFactor>[];
     final anomalies = <String>[];
     double penalty = 0;
 
-    // Damage / dark regions.
+    // Dark / discoloured / off-colour regions — the only damage signal V0
+    // has for barley. Deliberately NOT keying on edge density: barley's
+    // husk venation and ventral furrow are high-edge natural features (see
+    // the class doc).
     if (features.damage.darkRegionRatio > _highDamageDarkRatio) {
-      final strength = ((features.damage.darkRegionRatio - _highDamageDarkRatio) * 3).clamp(0.0, 1.0);
-      penalty += 24 * strength;
+      final strength = ((features.damage.darkRegionRatio - _highDamageDarkRatio) * 2.5).clamp(0.0, 1.0);
+      penalty += 40 * strength;
       evidence.add(EvidenceFactor(
-        description: 'Notable dark or off-colour surface regions',
+        description: 'Dark, discoloured or off-colour surface regions',
         supportsGoodQuality: false,
         weight: strength,
       ));
       anomalies.add('dark_surface_regions');
     } else {
       evidence.add(const EvidenceFactor(
-        description: 'Low visible dark-region ratio',
+        description: 'Even, healthy surface colour',
         supportsGoodQuality: true,
-        weight: 0.3,
+        weight: 0.4,
       ));
-    }
-
-    // Crack-like edge density.
-    if (features.damage.crackLikeEdgeRatio > _highCrackRatio) {
-      final strength =
-          ((features.damage.crackLikeEdgeRatio - _highCrackRatio) * 2).clamp(0.0, 1.0);
-      penalty += 20 * strength;
-      evidence.add(EvidenceFactor(
-        description: 'High surface irregularity (possible cracking)',
-        supportsGoodQuality: false,
-        weight: strength,
-      ));
-      anomalies.add('possible_surface_cracking');
-    } else {
       evidence.add(const EvidenceFactor(
-        description: 'Smooth, low-irregularity surface',
+        description: 'Surface lines and the central furrow read as normal grain features, not damage',
         supportsGoodQuality: true,
-        weight: 0.25,
+        weight: 0.2,
       ));
     }
 
     final score = (100 - penalty).clamp(0.0, 100.0);
     final qualityClass = anomalies.isEmpty ? QualityClass.good : QualityClass.damaged;
 
-    // Confidence reflects how far the total penalty is from the decision
-    // region and how much evidence was collected, not a calibrated
-    // probability — a rule engine has no real notion of calibrated
-    // uncertainty (§20). Max penalty here is ~44; the boundary sits near
-    // the first rule's minimum contribution.
-    final decisiveness = ((penalty - 12).abs() / 12).clamp(0.0, 1.0);
+    // Confidence reflects how far the penalty is from the decision region,
+    // not a calibrated probability (§20). One rule now, max penalty 40.
+    final decisiveness = ((penalty - 10).abs() / 15).clamp(0.0, 1.0);
     final confidence = (0.5 + 0.35 * decisiveness).clamp(0.0, 0.9);
 
     return QualityPrediction(

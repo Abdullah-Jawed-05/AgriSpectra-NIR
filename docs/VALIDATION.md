@@ -243,12 +243,19 @@ limitations" section is required output, not optional polish.
       natural husk/aleurone hue variance than damaged);
     - the hole branch carried no signal (sound ≈ damaged).
 
-  V0 is now a **GOOD-vs-DAMAGED screen only**, on surface darkening
-  (`darkRegionRatio > 0.10`) and crack-like edge density
-  (`crackLikeEdgeRatio > 0.30`). On that reference set: balanced accuracy
-  ≈ 0.73 (≈ 85% of sound seed kept, ≈ 62% of damaged caught). Still a
-  hand-tuned screening heuristic on one session's data — the real fix is
-  Model V1 once multi-session data exists.
+  **Then re-checked again on the "Front Split" set (2026-09-08)** — healthy
+  grains photographed ventral-furrow-up. The surviving crack-like
+  edge-density branch (`crackLikeEdgeRatio > 0.30`) fired on all of them:
+  the natural husk venation and the ventral furrow put healthy ventral
+  grains at ~0.47 edge density, *higher* than the median old-Damaged grain
+  (~0.20). Edge density tracks which face of the grain is up, not damage.
+  **Removed.**
+
+  V0 is now a **dark/discoloured-damage screen only**: `darkRegionRatio >
+  0.22` → `damaged`, else `good`. On Front Split + old good it keeps ~90%
+  of sound grain; on old Damaged/Broken it catches ~50%. It does **not**
+  detect cracks, splits, shrivel or breakage — those need V1. A modest,
+  honest screening heuristic on one crop's data.
 - **Single crop, single collection session.** All barley data came from one
   shoot, so `split_dataset.py` can only make an implicit-batch split — a V1
   trained on it will overstate its own accuracy (near-duplicate seeds leak

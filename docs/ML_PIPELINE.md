@@ -12,7 +12,7 @@ image_quality_gate.dart   — blur/exposure/glare/background(+texture)/resolutio
 seed_finder.dart          — Otsu threshold + connected components (detection+segmentation)
 seed_splitter.dart        — breaks a touching-seed blob into one mask per seed (§11)
 feature_extractor.dart    — color/texture/damage features over each segmented seed
-rule_classifier.dart      — Model V0: hand-tuned good/damaged screen (darkening + edge density)
+rule_classifier.dart      — Model V0: hand-tuned good/damaged screen (dark/discoloured regions only)
 impurity_detector.dart    — Model V0: batch-relative size/shape outlier -> IMPURITIES
 batch_engine.dart         — aggregates per-seed predictions into batch statistics
 ```
@@ -105,11 +105,14 @@ tile std-dev > 3.2 or busy-tile ratio > 0.80. Keep the two in sync. This
 is what stops another Barley Dataset V2 (blue mat) getting into training
 or a scan.
 
-**V0 rule re-tune (2026-09-07):** `RuleBasedClassifier` was re-checked
-against the parity-fixed features and cut down to a good/damaged screen
-(darkening + edge density only). The old shape rule flagged every
-elongated barley grain as `shriveled`, and the discoloration rule was
-inverted for barley. Full write-up in `docs/VALIDATION.md`.
+**V0 rule re-tune (2026-09-07, 2026-09-08):** `RuleBasedClassifier` was
+re-checked against the parity-fixed features and cut down to a single
+signal — `darkRegionRatio > 0.22` → `damaged`. The shape rule flagged
+every elongated grain as `shriveled`; the discoloration rule was inverted;
+the crack-like edge-density rule fired on barley's natural husk venation
+and ventral furrow (healthy ventral-side grains score *higher* on it than
+damaged ones). V0 detects dark/discoloured damage only — not cracks,
+splits, shrivel or breakage. Full write-up in `docs/VALIDATION.md`.
 
 **Touching-seed split (2026-09-07):** `seed_splitter.dart` /
 `seed_splitter.py` run as a post-process on any connected component that's

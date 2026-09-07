@@ -72,10 +72,17 @@ void main() {
     expect(p.anomalies, contains('dark_surface_regions'));
   });
 
-  test('crack-like edge density routes to damaged', () {
-    final p = classifier.classify(seed(crackLikeEdgeRatio: 0.6));
-    expect(p.qualityClass, QualityClass.damaged);
-    expect(p.anomalies, contains('possible_surface_cracking'));
+  test('a faint dark-region ratio (natural furrow shadow) stays good', () {
+    // The ventral furrow contributes ~0.08 on healthy grain; cutoff is 0.22.
+    final p = classifier.classify(seed(darkRegionRatio: 0.12));
+    expect(p.qualityClass, QualityClass.good);
+  });
+
+  test('high crack-like edge density alone is NOT penalised (regression: barley '
+      'husk venation / the ventral furrow are high-edge natural features)', () {
+    final p = classifier.classify(seed(crackLikeEdgeRatio: 0.55));
+    expect(p.qualityClass, QualityClass.good);
+    expect(p.anomalies, isEmpty);
   });
 
   test('barley-shaped geometry alone is NOT penalised (regression: the old '

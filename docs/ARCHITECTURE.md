@@ -88,9 +88,9 @@ Segmentation              (per-seed crop, mask, contour, orientation;
   ↓
 Feature Extraction         (geometry, color in RGB/HSV/LAB, texture, damage heuristics)
   ↓
-Visual Classifier (V0)      (rule engine over darkening + edge density → good / damaged + score)
+Visual Classifier (V0)      (rule engine: dark/discoloured regions → good / damaged + score)
   ↓
-Impurity Screen (V0)        (batch-relative size/shape outlier → IMPURITIES)
+Impurity Screen (V0)        (batch-relative size/shape + colour outlier → IMPURITIES)
   ↓
 Batch Engine                (aggregate seeds → quality stats; impurities → purity metric)
   ↓
@@ -103,11 +103,13 @@ class the classifier can emit but it means "not a seed" — the batch engine
 keeps it out of the quality figures and reports it as batch purity instead.
 
 Model V0 is a **rule engine**, not a trained model, and it only emits
-`good` or `damaged` — surface darkening and crack-like edge density,
-thresholds checked against the barley reference set (see
-docs/VALIDATION.md; the original shape/colour rules were miscalibrated for
-elongated barley and were removed). `broken`, `shriveled` and `impurities`
-need the trained V1; `impurities` additionally has a batch-relative
+`good` or `damaged` — on `darkRegionRatio` alone (dark spots, mould, rot,
+discolouration). Every other rule was miscalibrated for barley and
+removed: shape (barley is naturally elongated), discoloration (inverted),
+holes (no signal), and crack-like edge density (fires on the natural husk
+venation / ventral furrow — see docs/VALIDATION.md). `broken`, `shriveled`
+and `impurities` need the trained V1; `impurities` additionally has a
+batch-relative
 outlier rule (`impurity_detector.dart`). V0 exists so the full pipeline is
 provably correct end-to-end before any ML training — per §43 of the build
 prompt, proving the pipeline is the goal of V0, not accuracy.
