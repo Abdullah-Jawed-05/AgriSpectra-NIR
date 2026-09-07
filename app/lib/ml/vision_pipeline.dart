@@ -98,6 +98,19 @@ VisionPipelineResult runVisionPipeline(Uint8List imageBytes) {
     );
   }
 
+  // A pile of touching seeds segments as one merged blob — the count and
+  // per-seed verdicts would be misleading, so stop and ask for a better
+  // layout rather than return a wrong result.
+  if (seedFinder.lastLayoutPiled) {
+    return VisionPipelineResult(
+      quality: quality,
+      seedsDetected: segmented.length,
+      seedsRejected: seedFinder.lastRejectedCandidates,
+      errorMessage: 'The seeds are piled up or touching. Spread them into a single layer with '
+          'small gaps between them, on a plain sheet of paper, then rescan.',
+    );
+  }
+
   final classified = <ProcessedSeed>[];
   for (final seed in segmented) {
     final features = featureExtractor.extract(seed);

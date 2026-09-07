@@ -1,3 +1,4 @@
+import 'package:agrispectra/domain/entities/processed_seed.dart';
 import 'package:agrispectra/domain/value_objects/quality_class.dart';
 import 'package:agrispectra/ml/impurity_detector.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,56 +8,66 @@ import '_seed_fixtures.dart';
 void main() {
   const detector = ImpurityDetector();
 
-  test('a clear size outlier in an otherwise uniform batch is flagged as impurities', () {
+  // A batch of uniform barley grains: same size, shape and (Lab a*, b*).
+  List<ProcessedSeed> barleyBatch(int n) => [
+        for (var i = 0; i < n; i++)
+          makeSeed(id: 'seed$i', areaPx: 1000 + i * 5.0, aspectRatio: 2.0, labA: 5, labB: 30),
+      ];
+
+  test('a stone — different colour AND bigger — is flagged as impurities', () {
     final seeds = [
-      for (var i = 0; i < 9; i++) makeSeed(id: 'seed$i', areaPx: 1000, aspectRatio: 2.0),
-      makeSeed(id: 'rock', areaPx: 9000, aspectRatio: 2.0), // ~9x the batch median area
+      ...barleyBatch(9),
+      makeSeed(id: 'stone', areaPx: 6000, aspectRatio: 1.2, labA: 0, labB: 2), // grey, large, stubby
     ];
 
     final flagged = detector.flag(seeds);
-
-    final rock = flagged.firstWhere((s) => s.seedId == 'rock');
-    expect(rock.prediction!.qualityClass, QualityClass.impurities);
-    expect(rock.prediction!.anomalies, contains('foreign_object_suspected'));
-
-    for (final s in flagged.where((s) => s.seedId != 'rock')) {
+    final stone = flagged.firstWhere((s) => s.seedId == 'stone');
+    expect(stone.prediction!.qualityClass, QualityClass.impurities);
+    expect(stone.prediction!.anomalies, contains('foreign_object_suspected'));
+    for (final s in flagged.where((s) => s.seedId != 'stone')) {
       expect(s.prediction!.qualityClass, isNot(QualityClass.impurities));
     }
   });
 
-  test('a shape outlier is flagged even when its area is typical', () {
+  test('a large but barley-COLOURED grain is NOT flagged (regression: the '
+      'user saw big/bent grains and shadows called impurities)', () {
     final seeds = [
-      for (var i = 0; i < 9; i++) makeSeed(id: 'seed$i', areaPx: 1000, aspectRatio: 2.0),
-      makeSeed(id: 'stem', areaPx: 1000, aspectRatio: 12.0), // long and thin
+      ...barleyBatch(9),
+      makeSeed(id: 'big_grain', areaPx: 6000, aspectRatio: 2.0, labA: 5, labB: 30),
     ];
 
     final flagged = detector.flag(seeds);
+    expect(
+      flagged.firstWhere((s) => s.seedId == 'big_grain').prediction!.qualityClass,
+      isNot(QualityClass.impurities),
+    );
+  });
 
-    expect(flagged.firstWhere((s) => s.seedId == 'stem').prediction!.qualityClass,
-        QualityClass.impurities);
+  test('a strong colour outlier alone is enough (a clearly foreign object)', () {
+    final seeds = [
+      ...barleyBatch(9),
+      makeSeed(id: 'red_thing', areaPx: 1000, aspectRatio: 2.0, labA: 45, labB: 30),
+    ];
+
+    final flagged = detector.flag(seeds);
+    expect(
+      flagged.firstWhere((s) => s.seedId == 'red_thing').prediction!.qualityClass,
+      QualityClass.impurities,
+    );
   });
 
   test('a uniform batch flags nothing', () {
-    final seeds = [
-      for (var i = 0; i < 12; i++)
-        makeSeed(id: 'seed$i', areaPx: 1000 + i * 10.0, aspectRatio: 2.0 + i * 0.01),
-    ];
-
-    final flagged = detector.flag(seeds);
-
+    final flagged = detector.flag([...barleyBatch(12)]);
     expect(flagged.any((s) => s.prediction!.qualityClass == QualityClass.impurities), isFalse);
   });
 
   test('below the minimum sample size nothing is flagged', () {
     final seeds = [
-      makeSeed(id: 's1', areaPx: 1000),
-      makeSeed(id: 's2', areaPx: 1000),
-      makeSeed(id: 's3', areaPx: 1000),
-      makeSeed(id: 'huge', areaPx: 50000),
+      makeSeed(id: 's1'),
+      makeSeed(id: 's2'),
+      makeSeed(id: 's3'),
+      makeSeed(id: 'huge', areaPx: 50000, labA: 0, labB: 0),
     ];
-
-    final flagged = detector.flag(seeds);
-
-    expect(flagged, same(seeds));
+    expect(detector.flag(seeds), same(seeds));
   });
 }

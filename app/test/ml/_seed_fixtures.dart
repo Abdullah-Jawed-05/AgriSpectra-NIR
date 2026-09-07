@@ -15,6 +15,8 @@ ProcessedSeed makeSeed({
   double aspectRatio = 2.0,
   double score = 80,
   double confidence = 0.7,
+  double labA = 5,
+  double labB = 30,
   QualityClass qualityClass = QualityClass.good,
   List<String> anomalies = const [],
 }) {
@@ -39,7 +41,7 @@ ProcessedSeed makeSeed({
         eccentricity: 0.6,
         convexity: 0.9,
       ),
-      color: const ColorFeatures(
+      color: ColorFeatures(
         meanR: 150,
         meanG: 130,
         meanB: 90,
@@ -47,8 +49,8 @@ ProcessedSeed makeSeed({
         meanSaturation: 0.4,
         meanValue: 0.6,
         meanLabL: 60,
-        meanLabA: 5,
-        meanLabB: 30,
+        meanLabA: labA,
+        meanLabB: labB,
         colorVarianceRgb: 100,
         discolorationRatio: 0.05,
       ),
