@@ -11,6 +11,7 @@ import '../../domain/entities/spectral_measurement.dart';
 import '../../export/scan_report_pdf.dart';
 import '../widgets/badges.dart';
 import '../widgets/batch_histogram_chart.dart';
+import '../widgets/error_state.dart';
 import '../widgets/seed_card.dart';
 import '../widgets/spectral_graph.dart';
 
@@ -43,10 +44,18 @@ class ResultScreen extends ConsumerWidget {
       ),
       body: scanAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('Failed to load scan: $e')),
+        error: (e, st) => ErrorState(
+          title: "Couldn't load this scan.",
+          detail: e,
+          onRetry: () => ref.invalidate(scanByIdProvider(scanId)),
+        ),
         data: (scan) {
           if (scan == null) {
-            return const Center(child: Text('Scan not found.'));
+            return const ErrorState(
+              icon: Icons.search_off,
+              title: 'Scan not found.',
+              detail: 'It may have been deleted.',
+            );
           }
           return _ResultBody(scan: scan);
         },
