@@ -54,6 +54,25 @@ The `<crop>` directory level below stays in the layout (and the `Crop` enum
 stays in the app) as the seam for adding crops back once each has its own
 data and a tuned model.
 
+A `Datasets/Wheat Scan/` folder of ~110 wheat captures exists but is **not
+a dataset yet**: unlabelled (flat folder), single-seed macro shots, and
+`analyze_capture_set.py` (below) finds 98% of them have a background
+textured enough to reject at capture and 0% clean-with-a-seed. A usable
+wheat set needs a re-shoot on plain matte paper with multiple seeds per
+frame, then labelling — same bar as barley. Wheat stays out of the app
+until barley V1 is validated regardless (see `ROADMAP.md`).
+
+## Triaging a new collection session — `analyze_capture_set.py`
+
+Before labelling anything, run
+`python ml/scripts/analyze_capture_set.py --dir "<folder>" --out out/<name>`
+over a flat folder of captures. It runs the real pipeline (texture gate →
+normalisation → segmentation → touching-seed split → features) and writes
+`capture_analysis.csv` (one row per image) plus a summary: how many frames
+are usable, how many are rejected for a textured background, single vs
+multi-blob, and the primary-seed feature ranges. This is the fast way to
+tell whether a session is worth labelling or needs re-shooting.
+
 ## Directory structure for `prepare_dataset.py`
 
 Two layouts work, auto-detected per crop.
