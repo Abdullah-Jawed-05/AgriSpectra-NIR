@@ -8,10 +8,10 @@ is which.
 `app/lib/ml/`:
 
 ```
-image_quality_gate.dart   — blur/exposure/glare/background/resolution gate
+image_quality_gate.dart   — blur/exposure/glare/background(+texture)/resolution gate
 seed_finder.dart          — Otsu threshold + connected components (detection+segmentation)
 feature_extractor.dart    — color/texture/damage features over each segmented seed
-rule_classifier.dart      — Model V0: hand-tuned rule engine, not trained
+rule_classifier.dart      — Model V0: hand-tuned good/damaged screen (darkening + edge density)
 impurity_detector.dart    — Model V0: batch-relative size/shape outlier -> IMPURITIES
 batch_engine.dart         — aggregates per-seed predictions into batch statistics
 ```
@@ -95,6 +95,20 @@ Absolute-pixel geometry (`area_px`, `perimeter_px`, `width_px`,
 `length_px`) is still computed and stored (the result screen shows it)
 but excluded from the trained feature set (`NON_FEATURE_COLUMNS` in
 `train_baseline.py`) — it's framing, not shape.
+
+**Background-texture gate (2026-09-07):** `image_quality_gate.dart`
+(`_tileTextureStats`) and `segmentation.py` (`assess_background_texture`,
+called by `prepare_dataset.py`) hard-reject frames shot on a woven /
+printed / grained surface — a 48px-tile Laplacian pass, reject when median
+tile std-dev > 3.2 or busy-tile ratio > 0.80. Keep the two in sync. This
+is what stops another Barley Dataset V2 (blue mat) getting into training
+or a scan.
+
+**V0 rule re-tune (2026-09-07):** `RuleBasedClassifier` was re-checked
+against the parity-fixed features and cut down to a good/damaged screen
+(darkening + edge density only). The old shape rule flagged every
+elongated barley grain as `shriveled`, and the discoloration rule was
+inverted for barley. Full write-up in `docs/VALIDATION.md`.
 
 **Verification:** `ml/scripts/parity_check.py` and
 `app/test/tool/parity_check_dev.dart` run the two pipelines over the same

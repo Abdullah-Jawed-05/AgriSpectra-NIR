@@ -1,29 +1,50 @@
-import 'dart:math' as math;
-
 import '../core/constants/app_constants.dart';
 import '../domain/entities/quality_prediction.dart';
 import '../domain/entities/seed_features.dart';
 import '../domain/value_objects/quality_class.dart';
 
 /// Model V0 (§43): a rule engine over the extracted [SeedFeatures], not a
-/// trained model. This exists to prove the full pipeline works end-to-end
-/// honestly, before any labeled training data exists — see
-/// docs/ML_PIPELINE.md for the plan to replace this with a trained
-/// classifier (Model V1) once a real dataset is collected.
+/// trained model. It exists to prove the full pipeline works end-to-end
+/// honestly, before a trained classifier (Model V1) is wired in — see
+/// docs/ML_PIPELINE.md and docs/VALIDATION.md.
 ///
-/// Thresholds below are engineering judgment calibrated against a handful
-/// of reference seeds, not a statistically validated cutoff. They are
-/// deliberately named constants so they're easy to revisit once V1 data
-/// exists.
+/// **Scope: V0 is a GOOD-vs-DAMAGED screen for barley, nothing more.**
+/// It was re-checked (2026-09-07) against the parity-fixed features on
+/// 154 hand-labelled single-seed barley photos, and the earlier rule set
+/// turned out to be badly miscalibrated for this crop:
+///
+///  - The shape branch (`circularity < 0.55 || eccentricity > 0.85`) fired
+///    on essentially every barley grain — they are naturally elongated
+///    (circularity ≈ 0.17, eccentricity ≈ 0.9) — routing ~all seeds to
+///    `shriveled`. Removed. Nothing in these features separates shrivelled
+///    barley from sound barley (§66: don't ship a cutoff that isn't there).
+///  - The discoloration branch was backwards: sound barley has a *higher*
+///    hue-variance `discolorationRatio` (natural aleurone/husk colour) than
+///    damaged. Removed.
+///  - The hole branch carried no signal for barley (sound ≈ damaged).
+///    Removed.
+///
+/// What's left — surface darkening and crack-like edge density — does
+/// separate the two classes (balanced accuracy ≈ 0.73 on that set: ~85%
+/// of sound seed kept, ~62% of damaged caught). Still a hand-tuned
+/// screening heuristic, not a validated cutoff.
+///
+/// `broken`, `shriveled` and `impurities` are therefore never returned
+/// here: `impurities` is a batch-relative call handled by
+/// `ImpurityDetector` after this runs, and `broken` / `shriveled` need the
+/// trained V1.
 class RuleBasedClassifier {
   const RuleBasedClassifier();
 
-  static const double _highDamageDarkRatio = 0.18;
-  static const double _highCrackRatio = 0.35;
-  static const double _highHoleRatio = 0.02;
-  static const double _highDiscoloration = 0.3;
-  static const double _lowCircularity = 0.55;
-  static const double _highEccentricity = 0.85;
+  /// Fraction of the seed surface that reads as dark / off-colour. Sound
+  /// barley sits near 0 (75th percentile 0.0 on the reference set);
+  /// damaged seed runs much higher (median ≈ 0.17).
+  static const double _highDamageDarkRatio = 0.10;
+
+  /// Crack-like high-frequency edge density. Sound barley median ≈ 0.01,
+  /// damaged ≈ 0.18 — the overlap is real, so this is deliberately set
+  /// past most sound seed rather than at the class midpoint.
+  static const double _highCrackRatio = 0.30;
 
   QualityPrediction classify(SeedFeatures features) {
     final evidence = <EvidenceFactor>[];
@@ -32,8 +53,8 @@ class RuleBasedClassifier {
 
     // Damage / dark regions.
     if (features.damage.darkRegionRatio > _highDamageDarkRatio) {
-      final strength = ((features.damage.darkRegionRatio - _highDamageDarkRatio) * 2).clamp(0.0, 1.0);
-      penalty += 22 * strength;
+      final strength = ((features.damage.darkRegionRatio - _highDamageDarkRatio) * 3).clamp(0.0, 1.0);
+      penalty += 24 * strength;
       evidence.add(EvidenceFactor(
         description: 'Notable dark or off-colour surface regions',
         supportsGoodQuality: false,
@@ -51,8 +72,8 @@ class RuleBasedClassifier {
     // Crack-like edge density.
     if (features.damage.crackLikeEdgeRatio > _highCrackRatio) {
       final strength =
-          ((features.damage.crackLikeEdgeRatio - _highCrackRatio) * 1.5).clamp(0.0, 1.0);
-      penalty += 18 * strength;
+          ((features.damage.crackLikeEdgeRatio - _highCrackRatio) * 2).clamp(0.0, 1.0);
+      penalty += 20 * strength;
       evidence.add(EvidenceFactor(
         description: 'High surface irregularity (possible cracking)',
         supportsGoodQuality: false,
@@ -67,69 +88,16 @@ class RuleBasedClassifier {
       ));
     }
 
-    // Holes (possible insect damage).
-    if (features.damage.holeRatio > _highHoleRatio) {
-      final strength = (features.damage.holeRatio / (_highHoleRatio * 4)).clamp(0.0, 1.0);
-      penalty += 20 * strength;
-      evidence.add(EvidenceFactor(
-        description: 'Small enclosed voids detected (possible insect damage)',
-        supportsGoodQuality: false,
-        weight: strength,
-      ));
-      anomalies.add('possible_insect_damage');
-    }
-
-    // Discoloration.
-    if (features.color.discolorationRatio > _highDiscoloration) {
-      final strength =
-          ((features.color.discolorationRatio - _highDiscoloration) * 1.4).clamp(0.0, 1.0);
-      penalty += 16 * strength;
-      evidence.add(EvidenceFactor(
-        description: 'Uneven color distribution',
-        supportsGoodQuality: false,
-        weight: strength,
-      ));
-      anomalies.add('color_inconsistency');
-    } else {
-      evidence.add(const EvidenceFactor(
-        description: 'Normal color distribution',
-        supportsGoodQuality: true,
-        weight: 0.3,
-      ));
-    }
-
-    // Shape — low circularity or high eccentricity suggests shriveling or
-    // malformation.
-    if (features.geometry.circularity < _lowCircularity ||
-        features.geometry.eccentricity > _highEccentricity) {
-      final strength = math.max(
-        (_lowCircularity - features.geometry.circularity).clamp(0.0, 1.0),
-        (features.geometry.eccentricity - _highEccentricity).clamp(0.0, 1.0) * 2,
-      );
-      penalty += 14 * strength;
-      evidence.add(EvidenceFactor(
-        description: 'Irregular or elongated shape',
-        supportsGoodQuality: false,
-        weight: strength,
-      ));
-      anomalies.add('shape_irregularity');
-    } else {
-      evidence.add(const EvidenceFactor(
-        description: 'Uniform, expected shape',
-        supportsGoodQuality: true,
-        weight: 0.15,
-      ));
-    }
-
     final score = (100 - penalty).clamp(0.0, 100.0);
+    final qualityClass = anomalies.isEmpty ? QualityClass.good : QualityClass.damaged;
 
-    final qualityClass = _classify(anomalies);
-
-    // Confidence reflects how far the score is from the decision boundary
-    // and how much evidence was collected, not a calibrated probability —
-    // a rule engine has no real notion of calibrated uncertainty (§20).
-    final decisiveness = (penalty - 25).abs() / 25;
-    final confidence = (0.55 + 0.35 * decisiveness.clamp(0.0, 1.0)).clamp(0.0, 0.95);
+    // Confidence reflects how far the total penalty is from the decision
+    // region and how much evidence was collected, not a calibrated
+    // probability — a rule engine has no real notion of calibrated
+    // uncertainty (§20). Max penalty here is ~44; the boundary sits near
+    // the first rule's minimum contribution.
+    final decisiveness = ((penalty - 12).abs() / 12).clamp(0.0, 1.0);
+    final confidence = (0.5 + 0.35 * decisiveness).clamp(0.0, 0.9);
 
     return QualityPrediction(
       qualityClass: qualityClass,
@@ -139,26 +107,5 @@ class RuleBasedClassifier {
       anomalies: anomalies,
       modelVersion: AppVersions.visionModelVersion,
     );
-  }
-
-  // Deliberately does not return QualityClass.broken or .impurities:
-  //  - "broken" (physically fragmented) has no reliable single-seed
-  //    heuristic without a visual reference to calibrate against; guessing
-  //    a threshold would be the fabricated-looking precision §66 of the
-  //    build spec warns against.
-  //  - "impurities" (foreign matter) is a batch-relative call, not a
-  //    per-seed one — it's handled by ImpurityDetector
-  //    (ml/impurity_detector.dart) after this classifier runs.
-  // Model V1, trained on the labelled barley dataset, is what should
-  // actually learn all five classes — see docs/ML_PIPELINE.md.
-  QualityClass _classify(List<String> anomalies) {
-    if (anomalies.contains('shape_irregularity')) return QualityClass.shriveled;
-    if (anomalies.contains('possible_insect_damage') ||
-        anomalies.contains('color_inconsistency') ||
-        anomalies.contains('possible_surface_cracking') ||
-        anomalies.contains('dark_surface_regions')) {
-      return QualityClass.damaged;
-    }
-    return QualityClass.good;
   }
 }

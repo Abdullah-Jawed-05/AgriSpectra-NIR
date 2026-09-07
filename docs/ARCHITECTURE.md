@@ -87,7 +87,7 @@ Segmentation              (per-seed crop, mask, contour, orientation)
   ↓
 Feature Extraction         (geometry, color in RGB/HSV/LAB, texture, damage heuristics)
   ↓
-Visual Classifier (V0)      (rule-engine over features → class + score)
+Visual Classifier (V0)      (rule engine over darkening + edge density → good / damaged + score)
   ↓
 Impurity Screen (V0)        (batch-relative size/shape outlier → IMPURITIES)
   ↓
@@ -101,12 +101,15 @@ few hull-missing seeds go), `broken`, `shriveled`. `impurities` is a fifth
 class the classifier can emit but it means "not a seed" — the batch engine
 keeps it out of the quality figures and reports it as batch purity instead.
 
-Model V0 is a **rule engine**, not a trained model: thresholds on geometry/
-color/texture features tuned against the barley reference set, plus a
-batch-relative outlier rule for impurities (`impurity_detector.dart`). This
-exists specifically so the full pipeline is provably correct end-to-end
-before any ML training happens — per §43 of the build prompt, proving the
-pipeline is the actual goal of V0, not accuracy.
+Model V0 is a **rule engine**, not a trained model, and it only emits
+`good` or `damaged` — surface darkening and crack-like edge density,
+thresholds checked against the barley reference set (see
+docs/VALIDATION.md; the original shape/colour rules were miscalibrated for
+elongated barley and were removed). `broken`, `shriveled` and `impurities`
+need the trained V1; `impurities` additionally has a batch-relative
+outlier rule (`impurity_detector.dart`). V0 exists so the full pipeline is
+provably correct end-to-end before any ML training — per §43 of the build
+prompt, proving the pipeline is the goal of V0, not accuracy.
 
 ## 6. Future multimodal architecture
 

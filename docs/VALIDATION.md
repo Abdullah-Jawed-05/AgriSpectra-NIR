@@ -231,13 +231,24 @@ limitations" section is required output, not optional polish.
   [`ML_PIPELINE.md`](ML_PIPELINE.md) §3). Before that fix, color features
   (`_highDiscoloration` and friends) were silently computed from an
   accidentally desaturated crop, so `RuleBasedClassifier`'s color-based
-  branch was effectively inert — any hand-tuning that happened against V0's
-  actual behavior was tuning around dead code, not around real color
-  signal. Geometry/texture thresholds also now see meaningfully different
-  input distributions (real Sobel edges instead of a coarser forward-diff
-  gradient). Re-tuning against the real barley photos (or better, folding
-  this into Model V1 training) is the next honest step, not a retroactive
-  claim that V0's current thresholds are still well-calibrated.
+  branch was effectively inert.
+
+  **V0 was re-checked against the parity-fixed features (2026-09-07)** on
+  154 hand-labelled single-seed barley photos (`prepare_dataset.py
+  --one-seed` on lot1). The old rule set was badly wrong for barley:
+    - the shape branch (`circularity < 0.55 || eccentricity > 0.85`) fired
+      on ~every grain — barley is elongated (circ ≈ 0.17, ecc ≈ 0.9) — so
+      almost everything was labelled `shriveled` (GOOD recall ≈ 0.02);
+    - `discolorationRatio` was *inverted* for barley (sound grain has more
+      natural husk/aleurone hue variance than damaged);
+    - the hole branch carried no signal (sound ≈ damaged).
+
+  V0 is now a **GOOD-vs-DAMAGED screen only**, on surface darkening
+  (`darkRegionRatio > 0.10`) and crack-like edge density
+  (`crackLikeEdgeRatio > 0.30`). On that reference set: balanced accuracy
+  ≈ 0.73 (≈ 85% of sound seed kept, ≈ 62% of damaged caught). Still a
+  hand-tuned screening heuristic on one session's data — the real fix is
+  Model V1 once multi-session data exists.
 - **Single crop, single collection session.** All barley data came from one
   shoot, so `split_dataset.py` can only make an implicit-batch split — a V1
   trained on it will overstate its own accuracy (near-duplicate seeds leak
@@ -247,9 +258,10 @@ limitations" section is required output, not optional polish.
   foreign object that happens to be barley-grain-sized and -shaped will be
   missed, and an unusually large or misshapen real seed can be
   false-flagged. It needs ≥5 detections to run at all.
-- **`broken` is never emitted by V0.** The rule engine has no reliable
-  single-seed heuristic for fragmentation; only the trained V1 will
-  classify it.
+- **`broken` and `shriveled` are never emitted by V0.** The rule engine
+  has no reliable single-seed heuristic for fragmentation, and nothing in
+  the current features separates shrivelled barley from sound barley;
+  only the trained V1 will classify those. V0 returns `good` or `damaged`.
 - **Detection assumes a plain, contrasting background.**
   `ClassicalCVSeedFinder` tries both light-foreground and dark-foreground
   Otsu polarities and picks whichever finds more plausible blobs, but a
