@@ -13,7 +13,9 @@ slow and inaccessible at point-of-sale.
 Emphasize: this is the whole hardware budget for V1.
 
 **30–50s — capture.** Open AgriSpectra, pick a crop, capture a batch of
-seeds (10–50) inside the framing guide.
+seeds (10–50) **spread in a single layer, not touching**, on a plain sheet
+of paper inside the framing guide. (The pipeline rejects piled/touching
+seeds and textured backgrounds up front — worth showing that guard once.)
 
 **50–65s — detection and scoring.** The app detects and segments
 individual seeds, scores each one, and shows why (evidence factors, not a
@@ -49,12 +51,19 @@ not, because there is no physical sensor yet.
 
 ## Known rough edges to preempt in Q&A
 
-- No real training dataset yet → the visual classifier is a rule engine,
-  not a trained model (Model V0, see `docs/VALIDATION.md`).
-- No physical NIR hardware yet → everything NIR is simulated or,
-  optionally, an unverified BLE client (`BluetoothNIRDevice`) waiting for
-  real firmware to test against.
-- Tested primarily via `flutter run -d chrome`/web-server in this
-  environment (no Android SDK installed) — real-device camera/BLE
-  behavior on Android/iOS hasn't been verified yet. See
-  `docs/ARCHITECTURE.md` §10.
+- **No real training dataset yet** → the visual classifier is Model V0, a
+  hand-tuned rule engine, not a trained model. It screens **dark /
+  discoloured damage** and batch purity; it does *not* detect cracks,
+  shrivel or breakage (those need the trained V1). Framed as
+  "screening that may correlate with quality", never "detects X" — see
+  `docs/VALIDATION.md` and §66 of the build spec.
+- **Classical segmentation has limits** → it handles seeds spread in a
+  single layer well; a dense pile of ~40 touching grains can't be
+  separated per-seed by classical CV, so the app detects that and asks for
+  a better layout rather than returning a wrong count. A learned detector
+  (YOLO) is the post-V1 fix.
+- **No physical NIR hardware yet** → everything NIR is simulated (labelled
+  on screen) or an unverified BLE client waiting for real firmware.
+- Built and installed as a release APK on Android; the camera / scan /
+  history / report / dataset-collection flows have been run on a real
+  device. BLE against real NIR firmware is untested (no firmware exists).
