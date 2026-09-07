@@ -278,14 +278,32 @@ limitations" section is required output, not optional polish.
   contrast, and (since 2026-09-07) background texture via a tile-based
   Laplacian pass. `prepare_dataset.py` applies the same texture check to
   training images.
-- **Touching seeds are split, clumps are not.** A connected-component
-  blob ≥1.6× the batch's typical single-seed area is passed to
-  `seed_splitter.dart` (marker Voronoi partition on the distance
-  transform). It separates two or three grains touching side-by-side
-  cleanly; a dense pile, or grains stacked/overlapping so the distance
-  transform has one peak, still comes back as one seed and undercounts.
-  The split needs ≥2 components in the frame to estimate "typical area",
-  so a photo of a single clump splits nothing.
+- **Touching seeds are split, dense piles are rejected.** A
+  connected-component blob ≥1.6× the batch's typical single-seed area is
+  passed to `seed_splitter.dart` (marker Voronoi partition). It separates
+  two or three grains touching side-by-side cleanly. A *dense* pile
+  segments as one big merged blob — the pipeline detects that
+  (`SegmentationResult.piled`) and stops the scan with "spread the seeds
+  into a single layer", rather than returning a wrong count / wrong
+  per-seed verdicts. Classical CV cannot segment ~40 overlapping grains;
+  that needs a learned detector (§11).
+- **Segmentation is colour-based, not brightness-based (2026-09-08).**
+  Thresholding on CIE-Lab chroma (colour vs neutral) instead of luminance
+  is what lets a light-tan grain be told apart from white paper, and makes
+  a cast shadow — same colour as the surface, just darker — fall below the
+  threshold instead of being segmented as an object. This fixed the
+  user-reported "an impurity is shown as the corner of a seed" (furrow
+  lines were being segmented) and "shadows read as impurity / damage".
+  See `docs/ML_PIPELINE.md`.
+- **V0 does not detect cracks / splits.** The `crackLikeEdgeRatio` rule
+  was removed (2026-09-08) after the "Front Split" set showed it fires on
+  barley's natural ventral furrow and husk venation. V0 flags
+  dark/discoloured damage only.
+- **An impurity must be a colour outlier.** `ImpurityDetector` now
+  requires a blob to be *both* a size/shape outlier *and* a colour outlier
+  (Lab a*/b* distance from the batch median), or a very strong colour
+  outlier alone. A large or misshapen but barley-coloured grain is not
+  flagged foreign — nor is a segmentation fragment.
 - **No cultivar-specific tuning.** One rule set is applied regardless of
   crop or cultivar; nothing in the pipeline currently adjusts thresholds
   per crop even though `Crop` is tracked per scan.

@@ -50,8 +50,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from preprocessing.features import extract_all  # noqa: E402
 from preprocessing.segmentation import (  # noqa: E402
     assess_background_texture,
-    find_seeds,
     pick_primary_seed,
+    segment,
 )
 
 VALID_LABELS = {
@@ -109,6 +109,7 @@ def main() -> None:
     n_images = 0
     n_seeds = 0
     n_textured_skipped = 0
+    n_piled_skipped = 0
 
     for crop_dir in sorted(p for p in args.raw_dir.iterdir() if p.is_dir()):
         crop_name = crop_dir.name
@@ -156,7 +157,16 @@ def main() -> None:
                             )
                             continue
 
-                    seeds = find_seeds(image)
+                    result = segment(image)
+                    if result.piled and not args.one_seed:
+                        n_piled_skipped += 1
+                        print(
+                            f"WARNING: skipping {image_path.name} — seeds are piled/touching "
+                            "(one merged blob). Spread them into a single layer and re-shoot.",
+                            file=sys.stderr,
+                        )
+                        continue
+                    seeds = result.seeds
                     if args.one_seed:
                         primary = pick_primary_seed(seeds)
                         seeds = [primary] if primary is not None else []
@@ -198,6 +208,8 @@ def main() -> None:
             f"Skipped {n_textured_skipped} image(s) for textured backgrounds "
             "(--allow-textured-bg to keep them)."
         )
+    if n_piled_skipped:
+        print(f"Skipped {n_piled_skipped} image(s) where the seeds were piled/touching.")
     print(f"Wrote {out_csv}")
     print(f"Wrote {n_seeds} crop images to {crops_dir}")
     print("\nLabel distribution:")

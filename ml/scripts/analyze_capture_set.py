@@ -28,8 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from preprocessing.features import extract_all  # noqa: E402
 from preprocessing.segmentation import (  # noqa: E402
     assess_background_texture,
-    find_seeds,
     pick_primary_seed,
+    segment,
 )
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
@@ -80,8 +80,11 @@ def main() -> None:
             "bg_textured": tex.is_textured,
         }
 
-        seeds = find_seeds(img)
+        result = segment(img)
+        seeds = result.seeds
         row["seeds_found"] = len(seeds)
+        row["channel"] = result.channel
+        row["piled"] = result.piled
         primary = pick_primary_seed(seeds)
         if primary is not None:
             feats = extract_all(primary)
@@ -100,14 +103,14 @@ def main() -> None:
     n = len(df)
     textured = int(df["bg_textured"].sum())
     no_seed = int((df["seeds_found"] == 0).sum())
-    multi = int((df["seeds_found"] > 1).sum())
+    piled = int(df["piled"].sum())
     print(f"\n=== {args.dir.name}: {n} images ===")
     print(f"Wrote {csv}")
     print(f"  textured background (would be rejected at capture): {textured}/{n} ({100*textured/n:.0f}%)")
     print(f"  no seed segmented:                                  {no_seed}/{n} ({100*no_seed/n:.0f}%)")
-    print(f"  more than one blob (touching / clutter / texture):  {multi}/{n} ({100*multi/n:.0f}%)")
-    usable = df[(~df["bg_textured"]) & (df["seeds_found"] >= 1)]
-    print(f"  clean + at least one seed:                          {len(usable)}/{n} ({100*len(usable)/n:.0f}%)")
+    print(f"  seeds piled / touching (rejected at capture):       {piled}/{n} ({100*piled/n:.0f}%)")
+    usable = df[(~df["bg_textured"]) & (~df["piled"]) & (df["seeds_found"] >= 1)]
+    print(f"  clean, spread out, at least one seed:               {len(usable)}/{n} ({100*len(usable)/n:.0f}%)")
     if not usable.empty:
         print("\n  primary-seed feature ranges on the usable frames (p10 / p50 / p90):")
         for k in FEATURE_KEYS:

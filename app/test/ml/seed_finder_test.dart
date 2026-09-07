@@ -93,6 +93,49 @@ img.Image _canvasWithDisk({
 void main() {
   final finder = ClassicalCVSeedFinder();
 
+  test('a coloured seed on a plain background segments; a grey shadow blob does not', () {
+    final rng = Random(9);
+    final image = img.Image(width: 600, height: 400);
+    for (final p in image) {
+      final n = rng.nextInt(5) - 2;
+      p.setRgb((238 + n).clamp(0, 255), (240 + n).clamp(0, 255), (242 + n).clamp(0, 255)); // near-white
+    }
+    // A tan seed (chromatic) and a grey shadow patch (neutral, darker).
+    for (var y = 120; y < 180; y++) {
+      for (var x = 200; x < 320; x++) {
+        image.setPixelRgb(x, y, 180, 140, 80);
+      }
+    }
+    for (var y = 250; y < 330; y++) {
+      for (var x = 350; x < 470; x++) {
+        image.setPixelRgb(x, y, 190, 192, 194); // grey, ~same hue as bg, lower L
+      }
+    }
+
+    final seeds = finder.find(image);
+    expect(finder.lastChannel, 'chroma');
+    expect(seeds, hasLength(1), reason: 'the tan blob is a seed, the grey blob is a shadow');
+    expect(seeds.single.geometry.areaPx, greaterThan(3000));
+    expect(finder.lastLayoutPiled, isFalse);
+  });
+
+  test('one huge merged colour blob is reported as a pile', () {
+    final rng = Random(4);
+    final image = img.Image(width: 700, height: 500);
+    for (final p in image) {
+      final n = rng.nextInt(5) - 2;
+      p.setRgb((240 + n).clamp(0, 255), (241 + n).clamp(0, 255), (243 + n).clamp(0, 255));
+    }
+    // A single tan region covering ~20% of the frame — a pile of touching seeds.
+    for (var y = 120; y < 380; y++) {
+      for (var x = 200; x < 480; x++) {
+        image.setPixelRgb(x, y, 175, 138, 82);
+      }
+    }
+    finder.find(image);
+    expect(finder.lastLayoutPiled, isTrue);
+  });
+
   test(
     'detects a single high-contrast blob and preserves its color '
     '(regression: img.grayscale() must not mutate the source image)',

@@ -9,7 +9,8 @@ is which.
 
 ```
 image_quality_gate.dart   — blur/exposure/glare/background(+texture)/resolution gate
-seed_finder.dart          — Otsu threshold + connected components (detection+segmentation)
+seed_finder.dart          — CIE-Lab chroma threshold + connected components; shadow/
+                            fragment/pile rejection (detection+segmentation)
 seed_splitter.dart        — breaks a touching-seed blob into one mask per seed (§11)
 feature_extractor.dart    — color/texture/damage features over each segmented seed
 rule_classifier.dart      — Model V0: hand-tuned good/damaged screen (dark/discoloured regions only)
@@ -113,6 +114,31 @@ the crack-like edge-density rule fired on barley's natural husk venation
 and ventral furrow (healthy ventral-side grains score *higher* on it than
 damaged ones). V0 detects dark/discoloured damage only — not cracks,
 splits, shrivel or breakage. Full write-up in `docs/VALIDATION.md`.
+
+**Colour-distance segmentation (2026-09-08):** `seed_finder.dart::find` /
+`segmentation.py::segment` no longer threshold on luminance. A light-tan
+barley grain on white paper is barely darker than the paper (foreground
+fraction ~0.78 on a luminance Otsu — useless), and the dark ventral furrow
+lines / inter-grain shadows got picked up as "seeds" instead. Both sides
+now:
+- segment on **CIE-Lab chroma** (`sqrt(a*² + b*²)`, distance from neutral
+  grey): a tan grain is chromatic, plain paper and a cast shadow are
+  near-neutral. Same hand-rolled Lab as the feature extractor. Luminance
+  (`lum_dark`) is a fallback for near-greyscale frames (peak chroma < 3)
+  and genuinely dark seeds.
+- 3×3 morphological open+close on the mask (hand-rolled in Dart, closely
+  matches `cv2.MORPH_OPEN`+`CLOSE` — a ≤1px boundary effect, within
+  feature tolerance).
+- **shadow rejection** (blob mean chroma < 4.0 → cast shadow, dropped) and
+  **fragment rejection** (blob < 0.4× the batch's median blob area → furrow
+  line / speck), both only on the chroma channel.
+- **pile detection**: a big seed-coloured blob rejected as over-size
+  (> 5% of the frame) means the seeds are piled/touching —
+  `SegmentationResult.piled` / `lastLayoutPiled`. The app stops the scan
+  with "spread them into a single layer"; `prepare_dataset.py` skips the
+  image.
+Parity verified on a real grain: Dart vs Python area 4809 vs 4817,
+`darkRegionRatio` 0.058 vs 0.056, all features within ~2%.
 
 **Touching-seed split (2026-09-07):** `seed_splitter.dart` /
 `seed_splitter.py` run as a post-process on any connected component that's
