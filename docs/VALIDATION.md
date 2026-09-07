@@ -271,6 +271,14 @@ limitations" section is required output, not optional polish.
   contrast, and (since 2026-09-07) background texture via a tile-based
   Laplacian pass. `prepare_dataset.py` applies the same texture check to
   training images.
+- **Touching seeds are split, clumps are not.** A connected-component
+  blob ≥1.6× the batch's typical single-seed area is passed to
+  `seed_splitter.dart` (marker Voronoi partition on the distance
+  transform). It separates two or three grains touching side-by-side
+  cleanly; a dense pile, or grains stacked/overlapping so the distance
+  transform has one peak, still comes back as one seed and undercounts.
+  The split needs ≥2 components in the frame to estimate "typical area",
+  so a photo of a single clump splits nothing.
 - **No cultivar-specific tuning.** One rule set is applied regardless of
   crop or cultivar; nothing in the pipeline currently adjusts thresholds
   per crop even though `Crop` is tracked per scan.

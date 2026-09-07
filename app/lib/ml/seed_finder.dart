@@ -6,6 +6,7 @@ import 'package:image/image.dart' as img;
 
 import '../domain/entities/detected_seed.dart';
 import '../domain/entities/seed_features.dart';
+import 'seed_splitter.dart';
 import 'segmented_seed.dart';
 
 /// Detection + segmentation strategy interface (§11: "architect the system
@@ -35,11 +36,27 @@ class ClassicalCVSeedFinder implements SeedFinder {
     this.workingMaxDimension = 1100,
     this.minAreaFraction = 0.00025,
     this.maxAreaFraction = 0.08,
+    this.splitter = const SeedSplitter(),
   });
 
   final int workingMaxDimension;
   final double minAreaFraction;
   final double maxAreaFraction;
+
+  /// Post-process that breaks a single connected blob into several when it
+  /// is really touching seeds (§11). Set to `null` to disable.
+  final SeedSplitter? splitter;
+
+  /// A component is only handed to [splitter] when its area is at least
+  /// this multiple of the batch's typical single-seed area (25th
+  /// percentile of component areas) — a lone seed has no neighbour to be
+  /// stuck to, and running the split on every blob wastes work and risks
+  /// over-segmenting a single lumpy grain.
+  static const double _splitAreaMultiple = 1.6;
+
+  /// Populated by the most recent [find] call: how many blobs the splitter
+  /// turned into multiple seeds, and how many extra seeds that produced.
+  int lastComponentsSplit = 0;
 
   /// Populated by the most recent [find] call: how many raw connected
   /// components were found in the winning polarity, and how many were
@@ -93,11 +110,75 @@ class ClassicalCVSeedFinder implements SeedFinder {
     lastTotalCandidates = useD ? darkForeground.length : lightForeground.length;
     lastRejectedCandidates = lastTotalCandidates - chosen.length;
 
+    final finalComponents = _splitMergedComponents(chosen, w, h);
+
     final results = <SegmentedSeed>[];
-    for (var i = 0; i < chosen.length; i++) {
-      results.add(_buildSegmentedSeed('seed_${(i + 1).toString().padLeft(3, '0')}', chosen[i], image));
+    for (var i = 0; i < finalComponents.length; i++) {
+      results.add(_buildSegmentedSeed('seed_${(i + 1).toString().padLeft(3, '0')}', finalComponents[i], image));
     }
     return results;
+  }
+
+  /// Runs [splitter] over the components that are large enough to plausibly
+  /// be a touching pair/cluster, and replaces any it splits with the
+  /// resulting sub-components. Order is preserved so seed numbering stays
+  /// stable for components that weren't touched.
+  List<_RawComponent> _splitMergedComponents(List<_RawComponent> components, int w, int h) {
+    lastComponentsSplit = 0;
+    final s = splitter;
+    if (s == null || components.length < 2) return components;
+
+    final areas = components.map((c) => c.pixels.length).toList()..sort();
+    // 25th percentile: robust to a stray small fragment, and a good proxy
+    // for "one seed" when the batch is mostly singles.
+    final typicalSeedArea = areas[((areas.length - 1) * 0.25).round()];
+    final threshold = typicalSeedArea * _splitAreaMultiple;
+
+    final out = <_RawComponent>[];
+    for (final c in components) {
+      if (c.pixels.length < threshold) {
+        out.add(c);
+        continue;
+      }
+      final cw = c.maxX - c.minX + 1;
+      final ch = c.maxY - c.minY + 1;
+      final localMask = Uint8List(cw * ch);
+      for (final idx in c.pixels) {
+        final lx = idx % c.imageWidth - c.minX;
+        final ly = idx ~/ c.imageWidth - c.minY;
+        localMask[ly * cw + lx] = 255;
+      }
+
+      final parts = s.split(localMask, cw, ch);
+      if (parts.length < 2) {
+        out.add(c);
+        continue;
+      }
+
+      lastComponentsSplit++;
+      for (final part in parts) {
+        int minX = w, maxX = 0, minY = h, maxY = 0;
+        final globalPixels = <int>[];
+        for (final li in part) {
+          final gx = li % cw + c.minX;
+          final gy = li ~/ cw + c.minY;
+          globalPixels.add(gy * w + gx);
+          if (gx < minX) minX = gx;
+          if (gx > maxX) maxX = gx;
+          if (gy < minY) minY = gy;
+          if (gy > maxY) maxY = gy;
+        }
+        out.add(_RawComponent(
+          pixels: globalPixels,
+          minX: minX,
+          maxX: maxX,
+          minY: minY,
+          maxY: maxY,
+          imageWidth: w,
+        ));
+      }
+    }
+    return out;
   }
 
   List<DetectedSeed> toDetectedSeeds(List<SegmentedSeed> segmented) => segmented

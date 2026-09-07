@@ -10,6 +10,7 @@ is which.
 ```
 image_quality_gate.dart   — blur/exposure/glare/background(+texture)/resolution gate
 seed_finder.dart          — Otsu threshold + connected components (detection+segmentation)
+seed_splitter.dart        — breaks a touching-seed blob into one mask per seed (§11)
 feature_extractor.dart    — color/texture/damage features over each segmented seed
 rule_classifier.dart      — Model V0: hand-tuned good/damaged screen (darkening + edge density)
 impurity_detector.dart    — Model V0: batch-relative size/shape outlier -> IMPURITIES
@@ -109,6 +110,19 @@ against the parity-fixed features and cut down to a good/damaged screen
 (darkening + edge density only). The old shape rule flagged every
 elongated barley grain as `shriveled`, and the discoloration rule was
 inverted for barley. Full write-up in `docs/VALIDATION.md`.
+
+**Touching-seed split (2026-09-07):** `seed_splitter.dart` /
+`seed_splitter.py` run as a post-process on any connected component that's
+≥1.6× the batch's 25th-percentile component area. Method is a **marker
+Voronoi partition**, not `cv2.watershed`: chamfer (3,4) distance transform
+→ relative regional maxima (de-duplicated by a 16px minimum separation, so
+a single lumpy grain is left whole) → multi-source BFS assignment of every
+foreground pixel to the nearest marker. Chosen because it's deterministic
+and trivially identical in both languages — `cv2.watershed`'s tie-breaking
+is not. Parity is enforced by `app/test/ml/seed_splitter_parity_test.dart`
+against a fixture from `ml/scripts/gen_splitter_parity_fixture.py`
+(regenerate that when changing either side). Non-convex clumps are left
+for a learned detector (§11).
 
 **Verification:** `ml/scripts/parity_check.py` and
 `app/test/tool/parity_check_dev.dart` run the two pipelines over the same

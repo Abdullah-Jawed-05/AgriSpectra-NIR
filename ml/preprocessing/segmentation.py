@@ -16,6 +16,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from .seed_splitter import SPLIT_AREA_MULTIPLE, split_component
+
 MIN_AREA_FRACTION = 0.00025
 MAX_AREA_FRACTION = 0.08
 
@@ -295,23 +297,43 @@ def find_seeds(image_bgr: np.ndarray, working_max_dim: int = 1100) -> list[Segme
     use_dark = len(dark_result[4]) >= len(light_result[4])
     n_labels, labels, stats, centroids, valid = dark_result if use_dark else light_result
 
+    # Touching-seed split gate: a component is only a split candidate if
+    # it's clearly bigger than a typical single seed (25th percentile of
+    # component areas) — mirrors ClassicalCVSeedFinder._splitMergedComponents.
+    comp_areas = sorted(int(stats[l][4]) for l in valid)
+    typical_area = comp_areas[round((len(comp_areas) - 1) * 0.25)] if comp_areas else 0
+    split_threshold = typical_area * SPLIT_AREA_MULTIPLE
+
     seeds: list[SegmentedSeed] = []
-    for i, label in enumerate(valid):
-        x, y, w, h, _area = stats[label]
+    for label in valid:
+        x, y, w, h, area = (int(v) for v in stats[label])
         component_mask = (labels[y : y + h, x : x + w] == label).astype(np.uint8) * 255
-        crop = image[y : y + h, x : x + w]
 
-        geometry = geometry_from_mask(component_mask)
-        if geometry["perimeter_px"] <= 0:
-            continue
+        sub_masks = [component_mask]
+        if len(valid) >= 2 and area >= split_threshold > 0:
+            parts = split_component(component_mask)
+            if len(parts) >= 2:
+                sub_masks = [p.astype(np.uint8) * 255 for p in parts]
 
-        seeds.append(
-            SegmentedSeed(
-                seed_id=f"seed_{i + 1:03d}",
-                crop_bgr=crop,
-                mask=component_mask,
-                bbox=(int(x), int(y), int(w), int(h)),
-                **geometry,
+        for sub in sub_masks:
+            ys, xs = np.nonzero(sub)
+            if ys.size == 0:
+                continue
+            sy0, sy1, sx0, sx1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+            local = sub[sy0:sy1, sx0:sx1]
+            crop = image[y + sy0 : y + sy1, x + sx0 : x + sx1]
+
+            geometry = geometry_from_mask(local)
+            if geometry["perimeter_px"] <= 0:
+                continue
+
+            seeds.append(
+                SegmentedSeed(
+                    seed_id=f"seed_{len(seeds) + 1:03d}",
+                    crop_bgr=crop,
+                    mask=local,
+                    bbox=(int(x + sx0), int(y + sy0), int(sx1 - sx0), int(sy1 - sy0)),
+                    **geometry,
+                )
             )
-        )
     return seeds

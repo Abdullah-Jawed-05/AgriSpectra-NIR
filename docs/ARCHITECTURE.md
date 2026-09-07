@@ -83,7 +83,8 @@ Image Quality Gate      (blur / exposure / glare / background / resolution)
   ↓
 Seed Detector            (classical CV: threshold → connected components)
   ↓
-Segmentation              (per-seed crop, mask, contour, orientation)
+Segmentation              (per-seed crop, mask, contour, orientation;
+                           touching blobs split via a marker Voronoi partition)
   ↓
 Feature Extraction         (geometry, color in RGB/HSV/LAB, texture, damage heuristics)
   ↓
