@@ -56,7 +56,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           Expanded(
             child: historyAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, st) => Center(child: Text('Failed to load history: $e')),
+              error: (e, st) => _HistoryError(
+                error: e,
+                onRetry: () => ref.invalidate(scanHistoryProvider(_cropFilter)),
+              ),
               data: (scans) {
                 if (scans.isEmpty) {
                   return Center(
@@ -103,6 +106,52 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HistoryError extends StatelessWidget {
+  const _HistoryError({required this.error, required this.onRetry});
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(Icons.history_toggle_off, size: 40, color: AppColors.inkFaint),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                "Couldn't load scan history.",
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                '$error',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.inkFaint),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Align(
+                alignment: Alignment.center,
+                child: OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try again'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

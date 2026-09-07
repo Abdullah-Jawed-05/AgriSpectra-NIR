@@ -1,6 +1,3 @@
-import 'dart:math';
-import 'dart:typed_data';
-
 import 'package:agrispectra/application/scan_orchestrator.dart';
 import 'package:agrispectra/database/app_database.dart';
 import 'package:agrispectra/database/daos/scan_dao.dart';
@@ -10,35 +7,12 @@ import 'package:agrispectra/domain/entities/spectral_measurement.dart';
 import 'package:agrispectra/nir/no_nir_device.dart';
 import 'package:agrispectra/nir/spectral_device.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image/image.dart' as img;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../support/fixtures.dart';
+import 'scan_orchestrator_test_image.dart';
 
-/// A plain grey frame with four dark elongated blobs — passes the quality
-/// gate and gives the classical detector real seeds to segment.
-Uint8List _syntheticScan() {
-  final rng = Random(7);
-  final image = img.Image(width: 1280, height: 960);
-  for (final p in image) {
-    final v = 210 + rng.nextInt(3) - 1; // faint, non-periodic — passes the texture gate
-    p.setRgb(v, v, v);
-  }
-  // A grid of well-separated, hard-edged dark blobs: seed-sized, and their
-  // sharp edges give the blur check enough high-frequency energy to pass.
-  for (var gy = 0; gy < 3; gy++) {
-    for (var gx = 0; gx < 5; gx++) {
-      img.fillCircle(
-        image,
-        x: 180 + gx * 230,
-        y: 210 + gy * 270,
-        radius: 34,
-        color: img.ColorRgb8(28, 28, 28),
-      );
-    }
-  }
-  return img.encodePng(image);
-}
+
 
 /// [SpectralDevice] test double. [status] drives the orchestrator's
 /// "is it connected" check; [onMeasurement] lets a test blow up mid-scan.
@@ -102,7 +76,7 @@ void main() {
 
   test('camera-only: no NIR device -> a cameraOnly scan, no spectral', () async {
     final res = await orchestrator.analyze(
-      imageBytes: _syntheticScan(),
+      imageBytes: syntheticScanBytes(),
       crop: 'barley',
       nirDevice: NoNIRDevice(),
       cameraMetadata: camera,
@@ -117,7 +91,7 @@ void main() {
 
   test('a connected NIR device produces a multimodal scan', () async {
     final res = await orchestrator.analyze(
-      imageBytes: _syntheticScan(),
+      imageBytes: syntheticScanBytes(),
       crop: 'barley',
       nirDevice: _FakeNir(connected: true),
       cameraMetadata: camera,
@@ -132,7 +106,7 @@ void main() {
 
   test('a NIR device that drops mid-scan does not abort the camera result (§36/§58)', () async {
     final res = await orchestrator.analyze(
-      imageBytes: _syntheticScan(),
+      imageBytes: syntheticScanBytes(),
       crop: 'barley',
       nirDevice: _FakeNir(connected: true, throwOnScan: true),
       cameraMetadata: camera,
@@ -155,7 +129,7 @@ void main() {
     final dao = ScanDao(db);
 
     final scan = (await orchestrator.analyze(
-      imageBytes: _syntheticScan(),
+      imageBytes: syntheticScanBytes(),
       crop: 'barley',
       nirDevice: NoNIRDevice(),
       cameraMetadata: camera,

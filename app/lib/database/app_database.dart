@@ -70,6 +70,12 @@ class AppDatabase {
     }
   }
 
+  /// Wraps an already-open [Database] as an [AppDatabase] so a test can put
+  /// it behind `appDatabaseProvider` and exercise the real repository /
+  /// provider graph.
+  @visibleForTesting
+  factory AppDatabase.forTesting(Database db) = AppDatabase._;
+
   /// The additive migration steps, keyed by the version they upgrade *to*
   /// — exposed so a test can build a v1 database, apply them, and check an
   /// existing install would survive the upgrade (§25 "never alter a

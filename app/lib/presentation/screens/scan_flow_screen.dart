@@ -97,19 +97,33 @@ class _ScanFlowScreenState extends ConsumerState<ScanFlowScreen> {
 
       if (!mounted) return;
 
-      result.when(
-        ok: (scan) async {
-          await ref.read(scanRepositoryProvider).save(scan);
-          if (!mounted) return;
-          context.pushReplacement('/scan/result/${scan.scanId}');
-        },
-        err: (message, _) {
-          setState(() {
-            _phase = _FlowPhase.analysisFailed;
-            _errorMessage = message;
-          });
-        },
-      );
+      final failure = result.when<String?>(ok: (_) => null, err: (message, _) => message);
+      if (failure != null) {
+        setState(() {
+          _phase = _FlowPhase.analysisFailed;
+          _errorMessage = failure;
+        });
+        return;
+      }
+
+      final scan = result.valueOrNull!;
+      // The save is awaited *here*, not inside result.when's callback — an
+      // async closure passed to when() isn't awaited or caught, so a
+      // database write failure (§58) would otherwise leave the screen
+      // stuck on "Preparing results…" forever instead of surfacing.
+      try {
+        await ref.read(scanRepositoryProvider).save(scan);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _phase = _FlowPhase.analysisFailed;
+          _errorMessage = 'The analysis finished but the scan could not be saved: $e';
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      context.pushReplacement('/scan/result/${scan.scanId}');
     } catch (e) {
       if (!mounted) return;
       setState(() {

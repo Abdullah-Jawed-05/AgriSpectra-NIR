@@ -21,7 +21,14 @@ void main() {
   // I/O (IndexedDB/OPFS on web, native sqlite elsewhere) and the app must
   // still paint something if it's slow or fails, rather than a blank
   // screen forever — see _Bootstrap below.
-  runApp(const ProviderScope(child: _Bootstrap()));
+  //
+  // No ProviderScope here: _Bootstrap creates the *only* ProviderScope,
+  // once per state, so the success state's scope is the root one and its
+  // `appDatabaseProvider` override actually takes effect. With an outer
+  // ProviderScope + a nested override scope, providers that don't declare
+  // `dependencies` (scanRepositoryProvider et al.) get hoisted to the
+  // outer scope and read the un-overridden, throwing appDatabaseProvider.
+  runApp(const _Bootstrap());
 }
 
 final _router = GoRouter(
@@ -79,21 +86,31 @@ class _BootstrapState extends State<_Bootstrap> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return MaterialApp(
-            theme: AppTheme.light(),
-            home: _BootstrapMessage(
-              message: 'Could not open the local database:\n${snapshot.error}',
-              onRetry: () => setState(() => _future = AppDatabase.open()),
+          // Distinct key from the ready scope: the transition fully
+          // remounts the ProviderScope rather than mutating overrides on a
+          // live container.
+          return ProviderScope(
+            key: const ValueKey('bootstrap-error'),
+            child: MaterialApp(
+              theme: AppTheme.light(),
+              home: _BootstrapMessage(
+                message: 'Could not open the local database:\n${snapshot.error}',
+                onRetry: () => setState(() => _future = AppDatabase.open()),
+              ),
             ),
           );
         }
         if (!snapshot.hasData) {
-          return MaterialApp(
-            theme: AppTheme.light(),
-            home: const _BootstrapMessage(message: 'Starting AgriSpectra…'),
+          return ProviderScope(
+            key: const ValueKey('bootstrap-loading'),
+            child: MaterialApp(
+              theme: AppTheme.light(),
+              home: const _BootstrapMessage(message: 'Starting AgriSpectra…'),
+            ),
           );
         }
         return ProviderScope(
+          key: const ValueKey('bootstrap-ready'),
           overrides: [appDatabaseProvider.overrideWithValue(snapshot.data!)],
           child: const AgriSpectraApp(),
         );
