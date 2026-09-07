@@ -75,4 +75,4 @@ is where Model V1+ gets trained once real data exists.
 - [`docs/DATASET_GUIDE.md`](docs/DATASET_GUIDE.md) — how to collect and structure training data
 - [`docs/VALIDATION.md`](docs/VALIDATION.md) — what has and hasn't been validated
 - [`docs/HACKATHON_DEMO.md`](docs/HACKATHON_DEMO.md) — demo script
-- [`nir_protocol/protocol.md`](nir_protocol/protocol.md) — BLE protocol for the future NIR device
+- [`nir_protocol/protocol.md`](nir_protocol/protocol.md) — BLE protocol for the future NIR device.
