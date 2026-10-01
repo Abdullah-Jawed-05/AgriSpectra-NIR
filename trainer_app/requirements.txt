@@ -1,0 +1,22 @@
+# AgriSpectra Trainer — desktop app + the ml/ pipeline it wraps.
+# Install with: pip install -r trainer_app/requirements.txt
+#
+# This is a superset of ml/requirements.txt: the trainer app launches the
+# pipeline scripts as subprocesses with the SAME python interpreter by
+# default (see Settings -> Python interpreter), so one environment needs
+# everything both sides use.
+
+flet>=1.0.0
+m2cgen>=0.10.0
+
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.4
+opencv-python-headless>=4.9
+Pillow>=10.2
+joblib>=1.3
+
+# Optional: train_baseline.py prefers LightGBM when available and falls
+# back to RandomForestClassifier (which m2cgen/the fallback codegen both
+# handle) when it isn't installed.
+# lightgbm>=4.3

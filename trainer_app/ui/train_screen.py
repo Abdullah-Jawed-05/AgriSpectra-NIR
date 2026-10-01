@@ -1,0 +1,300 @@
+"""Train Mode — §3 Mode B. Pre-flight -> live pipeline stepper -> results
+dashboard -> (optional) Promote to App."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import flet as ft
+
+from core import theme
+from pipeline.preflight import scan_raw_data
+from pipeline.runner import PipelineRunner, StageFailed
+from promote.export import promote_model
+from ui.components import card, class_counts_row, confusion_matrix_grid, leakage_badge, pipeline_stepper, section_title, stat_tile
+
+STAGES = ["prepare", "split", "train", "evaluate"]
+MAX_LOG_LINES = 400
+
+
+class TrainScreen:
+    def __init__(self, ctx):
+        self.ctx = ctx
+        self.running = False
+        self.current_run_id: str | None = None
+        self.log_lines: list[str] = []
+        self.failed_stage: str | None = None
+
+        self.root_column = ft.Column(spacing=20, scroll=ft.ScrollMode.AUTO, expand=True)
+        self.preflight_panel = ft.Container()
+        self.run_panel = ft.Container(visible=False)
+        self.stepper_row = ft.Row()
+        self.log_view = ft.Column(spacing=1, scroll=ft.ScrollMode.AUTO, height=220)
+        self.log_expansion = ft.ExpansionTile(title=ft.Text("Live log"), controls=[ft.Container(content=self.log_view, bgcolor="#0B1210", border_radius=8, padding=10)])
+        self.results_panel = ft.Container(visible=False)
+        self.start_button = ft.FilledButton("Start training run", icon=ft.Icons.PLAY_ARROW_ROUNDED, style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF"))
+        self.test_batch_dropdown = ft.Dropdown(label="Force test batch (optional)", options=[], width=280)
+        self.test_fraction_field = ft.TextField(label="Test fraction", value="0.2", width=140, dense=True)
+        self.val_fraction_field = ft.TextField(label="Val fraction", value="0.15", width=140, dense=True)
+        self.version_label_field = ft.TextField(label="Version label", hint_text="e.g. v1_2026-10-01", width=260, dense=True)
+        self.promote_status = ft.Column(spacing=8)
+
+    def on_show(self) -> None:
+        self._rebuild_preflight()
+
+    def build(self) -> ft.Control:
+        self.root_column.controls = [
+            ft.Text("Train", size=24, weight=ft.FontWeight.BOLD, color=theme.INK),
+            self.preflight_panel,
+            self.run_panel,
+            self.results_panel,
+        ]
+        self._rebuild_preflight()
+        return self.root_column
+
+    # ---- pre-flight -----------------------------------------------------
+
+    def _rebuild_preflight(self) -> None:
+        summary = scan_raw_data(Path(self.ctx.config.raw_data_root), self.ctx.crop)
+        self.test_batch_dropdown.options = [ft.DropdownOption(key=b, text=b) for b in summary.batch_ids]
+
+        warnings = ft.Column(
+            spacing=6,
+            controls=[
+                ft.Row(
+                    spacing=8,
+                    controls=[ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, size=16, color=theme.CLASS_COLORS["DAMAGED"]), ft.Text(w, size=12, color=theme.INK, expand=True)],
+                )
+                for w in summary.warnings
+            ],
+        )
+
+        minutes = summary.estimated_seconds / 60
+        self.start_button.disabled = not summary.is_ready or self.running
+        self.start_button.on_click = self._on_start
+
+        self.preflight_panel.content = card(
+            ft.Column(
+                spacing=14,
+                controls=[
+                    section_title("Pre-flight"),
+                    class_counts_row(summary.class_counts) if summary.class_counts else ft.Text("No labelled data yet.", color=theme.INK_FAINT),
+                    ft.Row(
+                        spacing=12,
+                        controls=[
+                            stat_tile("Collection batches", str(summary.n_batches)),
+                            stat_tile("Total labelled seeds", str(sum(summary.class_counts.values()))),
+                            stat_tile("Est. run time", f"~{minutes:.1f} min"),
+                        ],
+                    ),
+                    warnings if summary.warnings else ft.Container(),
+                    ft.ExpansionTile(
+                        title=ft.Text("Advanced options", size=13),
+                        controls=[
+                            ft.Row(
+                                wrap=True,
+                                spacing=12,
+                                controls=[self.test_fraction_field, self.val_fraction_field, self.test_batch_dropdown],
+                            )
+                        ],
+                    ),
+                    self.start_button,
+                ],
+            )
+        )
+        self._safe_update()
+
+    # ---- run -----------------------------------------------------------
+
+    def _on_start(self, e) -> None:
+        if self.running:
+            return
+        self.running = True
+        self.failed_stage = None
+        self.log_lines = []
+        self.log_view.controls = []
+        self.results_panel.visible = False
+        self.run_panel.visible = True
+        self.stepper_row = pipeline_stepper(STAGES, None, None)
+        self._rebuild_run_panel()
+
+        try:
+            test_fraction = float(self.test_fraction_field.value or 0.2)
+            val_fraction = float(self.val_fraction_field.value or 0.15)
+        except ValueError:
+            test_fraction, val_fraction = 0.2, 0.15
+
+        test_batch = self.test_batch_dropdown.value or None
+        self.ctx.page.run_thread(self._do_run, test_fraction, val_fraction, test_batch)
+
+    def _rebuild_run_panel(self) -> None:
+        self.run_panel.content = card(
+            ft.Column(
+                spacing=14,
+                controls=[
+                    section_title("Training run in progress" if self.running else ("Run failed" if self.failed_stage else "Last run")),
+                    self.stepper_row,
+                    self.log_expansion,
+                ],
+            )
+        )
+        self._safe_update()
+
+    def _append_log(self, stage: str, line: str) -> None:
+        self.log_lines.append(f"[{stage}] {line}")
+        self.log_lines = self.log_lines[-MAX_LOG_LINES:]
+        self.log_view.controls = [ft.Text(ln, size=10, color="#D7E8E2", font_family="Consolas, monospace") for ln in self.log_lines[-200:]]
+        self._safe_update()
+
+    def stepper_row_controls_update(self, current_stage, failed_stage) -> None:
+        new_row = pipeline_stepper(STAGES, current_stage, failed_stage)
+        self.stepper_row.controls = new_row.controls
+        self._safe_update()
+
+    def _do_run(self, test_fraction: float, val_fraction: float, test_batch: str | None) -> None:
+        row_id = self.ctx.db.create_run("")
+        self.current_run_id = row_id
+        self.ctx.db.set_work_dir(row_id, str(Path(self.ctx.config.work_root) / "runs" / row_id))
+
+        runner = PipelineRunner(self.ctx.config, self.ctx.db, row_id)
+        try:
+            result = runner.run(
+                self.ctx.crop,
+                test_fraction=test_fraction,
+                val_fraction=val_fraction,
+                test_batch=test_batch,
+                on_line=self._append_log,
+                on_progress=lambda stage, frac: None,
+                on_stage_change=lambda stage: self.stepper_row_controls_update(stage, None),
+            )
+        except StageFailed as exc:
+            self.running = False
+            self.failed_stage = exc.stage
+            self.ctx.db.fail_run(row_id, str(exc))
+            self.stepper_row_controls_update(exc.stage, exc.stage)
+            self._rebuild_run_panel()
+            self.ctx.notify(f"Training run failed at {exc.stage}: {exc.tail[:200]}", error=True)
+            return
+        except Exception as exc:  # noqa: BLE001
+            self.running = False
+            self.failed_stage = "prepare"
+            self.ctx.db.fail_run(row_id, str(exc))
+            self._rebuild_run_panel()
+            self.ctx.notify(f"Training run failed: {exc}", error=True)
+            return
+
+        self.running = False
+        split_summary = result["split_summary"]
+        evaluation_report = result["evaluation_report"]
+
+        self.ctx.db.finish_run(
+            row_id,
+            model_dir=result["model_dir"],
+            eval_dir=result["eval_dir"],
+            n_train_rows=split_summary["train"]["rows"],
+            n_val_rows=split_summary["val"]["rows"],
+            n_test_rows=split_summary["test"]["rows"],
+            n_batches=len(set(split_summary["train"]["batches"]) | set(split_summary["val"]["batches"]) | set(split_summary["test"]["batches"])),
+            test_leakage_safe=int(split_summary["test_leakage_safe"]),
+            val_leakage_safe=int(split_summary["val_leakage_safe"]),
+            macro_f1=evaluation_report["macro_f1"],
+            balanced_accuracy=evaluation_report["balanced_accuracy"],
+            roc_auc=evaluation_report.get("roc_auc_ovr_macro"),
+            confusion_matrix_json=json.dumps(result["confusion_matrix"]),
+            per_class_json=json.dumps(evaluation_report["per_class"]),
+            label_classes_json=json.dumps(evaluation_report["label_classes"]),
+        )
+        self.stepper_row_controls_update("evaluate", None)
+        self._show_results(row_id)
+
+    # ---- results ---------------------------------------------------------
+
+    def _show_results(self, run_id: str) -> None:
+        run = self.ctx.db.get_run(run_id)
+        best = self.ctx.db.best_run_before(run_id, metric="macro_f1")
+
+        macro_f1 = run["macro_f1"] or 0.0
+        balanced_acc = run["balanced_accuracy"] or 0.0
+        confusion = json.loads(run["confusion_matrix_json"] or "[]")
+        label_classes = json.loads(run["label_classes_json"] or "[]")
+
+        delta_control = ft.Container()
+        if best is not None and best["macro_f1"] is not None:
+            delta = macro_f1 - best["macro_f1"]
+            arrow = "↑" if delta >= 0 else "↓"
+            color = theme.CLASS_COLORS["GOOD"] if delta >= 0 else theme.CLASS_COLORS["BROKEN"]
+            delta_control = ft.Text(f"{arrow} {abs(delta):.1%} vs previous best (macro-F1 {best['macro_f1']:.1%})", size=13, weight=ft.FontWeight.W_600, color=color)
+        else:
+            delta_control = ft.Text("First completed run — no previous best to compare yet.", size=12, color=theme.INK_FAINT)
+
+        self.version_label_field.value = f"run_{run_id}"
+        self.promote_status.controls = []
+
+        def do_promote(e) -> None:
+            self.ctx.page.run_thread(self._do_promote, run_id)
+
+        self.results_panel.content = card(
+            ft.Column(
+                spacing=16,
+                controls=[
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[section_title("Results"), leakage_badge(bool(run["test_leakage_safe"]))],
+                    ),
+                    ft.Row(
+                        spacing=12,
+                        wrap=True,
+                        controls=[
+                            stat_tile("Macro-F1", f"{macro_f1:.1%}"),
+                            stat_tile("Balanced accuracy", f"{balanced_acc:.1%}"),
+                            stat_tile("Test rows", str(run["n_test_rows"])),
+                            stat_tile("Batches", str(run["n_batches"])),
+                        ],
+                    ),
+                    delta_control,
+                    section_title("Confusion matrix"),
+                    confusion_matrix_grid(confusion, label_classes),
+                    ft.Divider(),
+                    section_title("Promote to App"),
+                    ft.Text(
+                        "Exports this model as dependency-free Dart you can drop into the Flutter app. "
+                        "Never wired in automatically.",
+                        size=12,
+                        color=theme.INK_FAINT,
+                    ),
+                    ft.Row(spacing=10, controls=[self.version_label_field, ft.FilledButton("Promote to App", icon=ft.Icons.UPLOAD_OUTLINED, on_click=do_promote, style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF"))]),
+                    self.promote_status,
+                ],
+            )
+        )
+        self.results_panel.visible = True
+        self._safe_update()
+
+    def _do_promote(self, run_id: str) -> None:
+        run = self.ctx.db.get_run(run_id)
+        try:
+            result = promote_model(Path(run["model_dir"]), Path(self.ctx.config.export_root), run_id, self.version_label_field.value or None)
+        except Exception as exc:  # noqa: BLE001
+            self.ctx.notify(f"Promote failed: {exc}", error=True)
+            return
+
+        self.ctx.db.mark_promoted(run_id)
+
+        feature_text = "\n".join(f"{i}: {c}" for i, c in enumerate(result.feature_columns))
+        label_text = "\n".join(f"{i}: {c}" for i, c in enumerate(result.label_classes))
+
+        self.promote_status.controls = [
+            ft.Text(f"Exported ({result.method}) to {result.export_dir}", size=12, color=theme.CLASS_COLORS["GOOD"]),
+            ft.Text("Feature order (copy exactly into FeatureExtractor wiring):", size=12, weight=ft.FontWeight.W_600),
+            ft.Container(bgcolor=theme.SURFACE_ALT, border_radius=8, padding=10, content=ft.Text(feature_text, size=11, selectable=True, font_family="Consolas, monospace")),
+            ft.Text("Label order:", size=12, weight=ft.FontWeight.W_600),
+            ft.Container(bgcolor=theme.SURFACE_ALT, border_radius=8, padding=10, content=ft.Text(label_text, size=11, selectable=True, font_family="Consolas, monospace")),
+        ]
+        self._safe_update()
+
+    def _safe_update(self) -> None:
+        try:
+            self.root_column.update()
+        except (AssertionError, RuntimeError):
+            pass

@@ -10,6 +10,9 @@ file is install/run instructions.
 ```
 app/              Flutter application (Android/iOS/Web)
 ml/               Python training pipeline (Model V1+)
+trainer_app/      Offline desktop GUI that wraps ml/ — sort seed photos
+                   into classes and run Prepare/Split/Train/Evaluate
+                   without a terminal (see trainer_app/README.md)
 nir_protocol/     BLE GATT protocol spec for the future NIR device
 simulator/        Reference notes for the simulated NIR data model
 docs/             Architecture, roadmap, dataset guide, validation status
