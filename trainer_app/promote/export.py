@@ -38,6 +38,12 @@ _ADAPTER_TEMPLATE = '''{header}
 
 import '{generated_import}' as generated;
 
+/// True once a real model has been promoted — distinguishes this
+/// generated file from the placeholder `agrispectra_model_v1_adapter.dart`
+/// that ships in the app before any model exists (see
+/// app/lib/ml/model_v1_predictor.dart, which gates on this).
+const bool modelV1Available = true;
+
 /// Feature-vector order `predictModelV1` expects in its input map's keys.
 /// Keep in sync with app/lib/ml/feature_extractor.dart's SeedFeatures.
 const List<String> modelV1FeatureOrder = {feature_list_dart};

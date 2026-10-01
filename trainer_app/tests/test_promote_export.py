@@ -42,6 +42,7 @@ def test_promote_model_m2cgen_path(tmp_path, trained_model_dir):
     assert "List<double> score(List<double> input)" in result.generated_dart_path.read_text()
     adapter_text = result.adapter_dart_path.read_text()
     assert "modelV1FeatureOrder" in adapter_text
+    assert "const bool modelV1Available = true;" in adapter_text
     assert "f0" in adapter_text
     assert "GOOD" in adapter_text
 

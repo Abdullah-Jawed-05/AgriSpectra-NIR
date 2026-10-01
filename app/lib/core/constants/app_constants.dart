@@ -14,6 +14,11 @@ class AppVersions {
   /// bug where color features were being computed from an accidentally
   /// grayscaled crop.
   static const String visionModelVersion = 'agrivision-v0.2-rule-engine';
+
+  /// Model V1: a trained classifier promoted from the AgriSpectra Trainer
+  /// (trainer_app/, "Promote to App") — see ml/model_v1_predictor.dart for
+  /// the gate that decides whether it's actually used.
+  static const String visionModelVersionV1 = 'agrivision-v1-trained';
   static const String nirModelVersion = 'agrinir-v0-simulated';
   static const String fusionModelVersion = 'agrifusion-v0-weighted';
 

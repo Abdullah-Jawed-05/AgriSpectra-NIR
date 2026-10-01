@@ -9,6 +9,7 @@ import 'batch_engine.dart';
 import 'feature_extractor.dart';
 import 'image_quality_gate.dart';
 import 'impurity_detector.dart';
+import 'model_v1_predictor.dart';
 import 'rule_classifier.dart';
 import 'seed_finder.dart';
 
@@ -114,7 +115,11 @@ VisionPipelineResult runVisionPipeline(Uint8List imageBytes) {
   final classified = <ProcessedSeed>[];
   for (final seed in segmented) {
     final features = featureExtractor.extract(seed);
-    final prediction = classifier.classify(features);
+    // Model V1 (trained, promoted from the Trainer) takes over when
+    // enabled and available; otherwise the V0 rule engine runs as today.
+    // See model_v1_predictor.dart for the gate and docs/VALIDATION.md for
+    // why that gate stays off until a model is actually checked.
+    final prediction = tryModelV1(features) ?? classifier.classify(features);
     classified.add(ProcessedSeed(
       seedId: seed.seedId,
       cropPng: img.encodePng(seed.crop),
