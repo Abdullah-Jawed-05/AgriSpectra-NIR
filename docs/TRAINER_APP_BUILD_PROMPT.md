@@ -187,12 +187,18 @@ python split_dataset.py --features features.csv --out <folder> [--test-fraction 
 ### Stage 3 — `train_baseline.py`: train the model
 
 ```
-python train_baseline.py --train train.csv --val val.csv --out <folder>
+python train_baseline.py --train train.csv --val val.csv --out <folder> [--model lightgbm|random_forest]
 ```
 
-- Trains a scikit-learn `RandomForestClassifier` on the feature columns
-  (excluding the metadata/non-feature columns listed above), encoding
-  `label` with a `LabelEncoder`.
+- Trains either a LightGBM `LGBMClassifier` or a scikit-learn
+  `RandomForestClassifier` on the feature columns (excluding the
+  metadata/non-feature columns listed above), encoding `label` with a
+  `LabelEncoder`. `--model` chooses which; without it, the script
+  defaults to `lightgbm` when the package is installed and falls back to
+  `random_forest` otherwise — so the artifact's actual type depends on
+  the training environment, not just the code. Don't assume one or the
+  other; read `model.joblib`'s type (or `training_metadata.json`) before
+  writing any code that only handles one.
 - Writes to `--out`: `model.joblib` (the trained model), `label_classes.json`
   (the label encoder's class order), `feature_columns.json` (the exact
   ordered feature-column list the model expects), `training_metadata.json`
@@ -333,24 +339,29 @@ Stages 1–4 of the real pipeline, with a visible pipeline view:
 
 ## 4. The "Promote to App" step — read this carefully, it's the trickiest part
 
-The trained model from Stage 3 (`model.joblib`, a scikit-learn
-`RandomForestClassifier`) **cannot be loaded directly by the Flutter
-app** — Flutter/Dart has no Python runtime and no joblib/pickle reader.
-There is currently **no deployment path from a trained model to the phone
-app at all**; building one is implicitly part of this tool's job, because
-"the model learns from it" has to eventually mean the phone app gets
-smarter, not just that a file sits on a laptop.
+The trained model from Stage 3 (`model.joblib`, either a LightGBM
+`LGBMClassifier` or a scikit-learn `RandomForestClassifier` — see §2's
+note on `train_baseline.py --model`) **cannot be loaded directly by the
+Flutter app** — Flutter/Dart has no Python runtime and no joblib/pickle
+reader. There is currently **no deployment path from a trained model to
+the phone app at all**; building one is implicitly part of this tool's
+job, because "the model learns from it" has to eventually mean the phone
+app gets smarter, not just that a file sits on a laptop.
 
 **Recommended approach**: use **model-to-code generation**, specifically
 the `m2cgen` Python library (`pip install m2cgen`), which converts a
-trained scikit-learn model directly into standalone source code in a
-target language with **zero runtime dependencies** — and it supports Dart
-as an output language. Concretely, your "Promote to App" action should:
+trained model directly into standalone source code in a target language
+with **zero runtime dependencies** — it supports both LightGBM and
+scikit-learn models, and Dart as an output language, so the same export
+call works regardless of which model type Stage 3 produced. Concretely,
+your "Promote to App" action should:
 
 1. Run `m2cgen.export_to_dart(model)` (or equivalent) on the trained
-   `RandomForestClassifier` to produce a `.dart` file containing the
-   decision logic as plain functions/arrays — no ML library needed at
-   runtime in the app.
+   model — whichever type it is — to produce a `.dart` file containing
+   the decision logic as plain functions/arrays — no ML library needed at
+   runtime in the app. Only fall back to hand-written tree introspection
+   (e.g. for a scikit-learn forest via `estimator.tree_`) if `m2cgen`
+   itself fails for a given model type.
 2. Wrap that generated file with a small, clearly-marked adapter that:
    - Takes the app's existing per-seed feature object (the Dart app
      already computes every one of the feature-column names from §2,
