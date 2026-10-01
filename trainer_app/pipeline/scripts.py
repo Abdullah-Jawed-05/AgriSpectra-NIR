@@ -49,3 +49,23 @@ def import_preprocessing(config: AppConfig) -> types.SimpleNamespace:
         pick_primary_seed=segmentation.pick_primary_seed,
         extract_all=features.extract_all,
     )
+
+
+def import_v0_baseline(config: AppConfig) -> types.SimpleNamespace:
+    """Imports the V0 rule-engine baseline (ml/evaluation/v0_baseline.py)
+    for the "did V1 beat V0" comparison in Train Mode's results dashboard
+    (§3 Mode B.3) — read-only, evaluation-only, same import seam as
+    `import_preprocessing`.
+
+    Raises FileNotFoundError with a clear message if ml/ isn't where
+    config.pipeline_dir says, matching `import_preprocessing`'s contract
+    so callers can handle both the same way."""
+    if not config.is_pipeline_configured():
+        raise FileNotFoundError(
+            f"Pipeline scripts not found under {config.pipeline_dir!r}. "
+            "Set the correct path in Settings -> Pipeline location."
+        )
+    _ensure_on_path(Path(config.pipeline_dir))
+    from evaluation import v0_baseline  # noqa: PLC0415
+
+    return types.SimpleNamespace(evaluate_v0_baseline=v0_baseline.evaluate_v0_baseline)

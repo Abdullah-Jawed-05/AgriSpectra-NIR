@@ -11,7 +11,7 @@ import flet as ft
 from core import theme
 from pipeline.preflight import scan_raw_data
 from pipeline.runner import PipelineRunner, StageFailed
-from promote.export import promote_model
+from promote.export import copy_promoted_to, promote_model
 from ui.components import card, class_counts_row, confusion_matrix_grid, leakage_badge, pipeline_stepper, section_title, stat_tile
 
 STAGES = ["prepare", "split", "train", "evaluate"]
@@ -39,6 +39,7 @@ class TrainScreen:
         self.val_fraction_field = ft.TextField(label="Val fraction", value="0.15", width=140, dense=True)
         self.version_label_field = ft.TextField(label="Version label", hint_text="e.g. v1_2026-10-01", width=260, dense=True)
         self.promote_status = ft.Column(spacing=8)
+        self.copy_status = ft.Column(spacing=6)
 
     def on_show(self) -> None:
         self._rebuild_preflight()
@@ -204,6 +205,7 @@ class TrainScreen:
             confusion_matrix_json=json.dumps(result["confusion_matrix"]),
             per_class_json=json.dumps(evaluation_report["per_class"]),
             label_classes_json=json.dumps(evaluation_report["label_classes"]),
+            v0_baseline_json=json.dumps(result.get("v0_baseline")),
         )
         self.stepper_row_controls_update("evaluate", None)
         self._show_results(row_id)
@@ -228,8 +230,30 @@ class TrainScreen:
         else:
             delta_control = ft.Text("First completed run — no previous best to compare yet.", size=12, color=theme.INK_FAINT)
 
+        v0_baseline = json.loads(run["v0_baseline_json"] or "null")
+        if v0_baseline is not None:
+            beats_v0 = macro_f1 > v0_baseline["macro_f1"]
+            arrow = "↑" if beats_v0 else "↓"
+            color = theme.CLASS_COLORS["GOOD"] if beats_v0 else theme.CLASS_COLORS["BROKEN"]
+            v0_control = ft.Column(
+                spacing=4,
+                controls=[
+                    ft.Text(
+                        f"{arrow} V1 macro-F1 {macro_f1:.1%} vs V0 rule-engine baseline "
+                        f"{v0_baseline['macro_f1']:.1%} on this same held-out test set",
+                        size=13,
+                        weight=ft.FontWeight.W_600,
+                        color=color,
+                    ),
+                    ft.Text(v0_baseline["scope_note"], size=11, color=theme.INK_FAINT),
+                ],
+            )
+        else:
+            v0_control = ft.Text("V0 baseline comparison unavailable for this run.", size=12, color=theme.INK_FAINT)
+
         self.version_label_field.value = f"run_{run_id}"
         self.promote_status.controls = []
+        self.copy_status.controls = []
 
         def do_promote(e) -> None:
             self.ctx.page.run_thread(self._do_promote, run_id)
@@ -253,6 +277,7 @@ class TrainScreen:
                         ],
                     ),
                     delta_control,
+                    v0_control,
                     section_title("Confusion matrix"),
                     confusion_matrix_grid(confusion, label_classes),
                     ft.Divider(),
@@ -284,12 +309,50 @@ class TrainScreen:
         feature_text = "\n".join(f"{i}: {c}" for i, c in enumerate(result.feature_columns))
         label_text = "\n".join(f"{i}: {c}" for i, c in enumerate(result.label_classes))
 
+        def do_copy(e) -> None:
+            self._do_copy_to_app(result.export_dir)
+
         self.promote_status.controls = [
             ft.Text(f"Exported ({result.method}) to {result.export_dir}", size=12, color=theme.CLASS_COLORS["GOOD"]),
             ft.Text("Feature order (copy exactly into FeatureExtractor wiring):", size=12, weight=ft.FontWeight.W_600),
             ft.Container(bgcolor=theme.SURFACE_ALT, border_radius=8, padding=10, content=ft.Text(feature_text, size=11, selectable=True, font_family="Consolas, monospace")),
             ft.Text("Label order:", size=12, weight=ft.FontWeight.W_600),
             ft.Container(bgcolor=theme.SURFACE_ALT, border_radius=8, padding=10, content=ft.Text(label_text, size=11, selectable=True, font_family="Consolas, monospace")),
+            ft.Divider(),
+            ft.Text(
+                f"Copy destination: {self.ctx.config.app_lib_ml_dir or '(not set — see Settings)'}",
+                size=11,
+                color=theme.INK_FAINT,
+            ),
+            ft.OutlinedButton(
+                "Copy to app",
+                icon=ft.Icons.DRIVE_FILE_MOVE_OUTLINED,
+                on_click=do_copy,
+                disabled=not self.ctx.config.is_app_lib_ml_dir_configured(),
+            ),
+            self.copy_status,
+        ]
+        self._safe_update()
+
+    def _do_copy_to_app(self, export_dir: Path) -> None:
+        try:
+            copied = copy_promoted_to(export_dir, Path(self.ctx.config.app_lib_ml_dir))
+        except Exception as exc:  # noqa: BLE001
+            self.copy_status.controls = [ft.Text(f"Copy failed: {exc}", size=12, color=theme.CLASS_COLORS["BROKEN"])]
+            self._safe_update()
+            return
+
+        names = "\n".join(f"  {p.name}" for p in copied)
+        self.copy_status.controls = [
+            ft.Text(f"Copied to {self.ctx.config.app_lib_ml_dir}:\n{names}", size=12, color=theme.CLASS_COLORS["GOOD"]),
+            ft.Text(
+                "This only makes the model available, not active — useModelV1 in "
+                "app/lib/ml/model_v1_predictor.dart is still false. Flip it manually "
+                "(and rebuild the app) only after checking this run against held-out "
+                "data beats V0, per docs/VALIDATION.md.",
+                size=11,
+                color=theme.INK_FAINT,
+            ),
         ]
         self._safe_update()
 

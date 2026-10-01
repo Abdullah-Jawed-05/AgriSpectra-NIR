@@ -129,6 +129,61 @@ def test_sort_screen_phone_export_import_via_ui(config, db, tmp_path):
     assert (raw_root / "barley" / "app_2026-10-02" / "DAMAGED" / "seed2.png").is_file()
 
 
+def test_train_screen_promote_and_copy_to_app(config, db, tmp_path):
+    import json
+    from pathlib import Path
+
+    import joblib
+    import numpy as np
+    from sklearn.ensemble import RandomForestClassifier
+
+    from ui.train_screen import TrainScreen
+
+    # A fake completed run — bypasses the slow real pipeline (covered by
+    # test_pipeline_runner.py's slow test), since this test only exercises
+    # Promote to App -> Copy to app.
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    rng = np.random.default_rng(0)
+    model = RandomForestClassifier(n_estimators=5, max_depth=3, random_state=0)
+    model.fit(rng.normal(size=(30, 3)), rng.integers(0, 2, size=30))
+    joblib.dump(model, model_dir / "model.joblib")
+    (model_dir / "feature_columns.json").write_text(json.dumps(["f0", "f1", "f2"]))
+    (model_dir / "label_classes.json").write_text(json.dumps(["GOOD", "DAMAGED"]))
+
+    run_id = db.create_run(str(tmp_path / "work"))
+    db.finish_run(run_id, model_dir=str(model_dir), macro_f1=0.5, balanced_accuracy=0.5)
+
+    config.app_lib_ml_dir = str(tmp_path / "app_lib_ml")
+
+    class Ctx:
+        pass
+
+    ctx = Ctx()
+    ctx.config = config
+    ctx.db = db
+    ctx.crop = "barley"
+    ctx.page = StubPage()
+    ctx.navigate = lambda n: None
+    ctx.notify = lambda *a, **k: None
+
+    screen = TrainScreen(ctx)
+    screen.build()
+    screen._do_promote(run_id)
+
+    export_dir = Path(config.export_root) / f"trained_model_run_{run_id}"
+    assert export_dir.is_dir()  # Promote to App actually ran
+
+    screen._do_copy_to_app(export_dir)
+
+    app_ml_dir = Path(config.app_lib_ml_dir)
+    assert (app_ml_dir / "model_v1_generated.dart").is_file()
+    assert (app_ml_dir / "agrispectra_model_v1_adapter.dart").is_file()
+    copy_text = "".join(str(c.value) for c in screen.copy_status.controls if hasattr(c, "value"))
+    assert "Copied to" in copy_text
+    assert "useModelV1" in copy_text
+
+
 def test_train_screen_preflight_disables_start_when_no_data(config, db):
     from ui.train_screen import TrainScreen
 

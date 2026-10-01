@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 """
 
+# Columns added after the initial CREATE TABLE shipped — `CREATE TABLE IF
+# NOT EXISTS` only creates a *missing* table, it never alters an existing
+# one, so each of these needs its own guarded ALTER TABLE for anyone who
+# already has an app.sqlite3 on disk from before this column existed.
+_MIGRATIONS = [
+    "ALTER TABLE runs ADD COLUMN v0_baseline_json TEXT",
+]
+
 
 def new_id() -> str:
     return uuid.uuid4().hex[:12]
@@ -92,6 +100,12 @@ class Database:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(SCHEMA)
+        self._conn.commit()
+        for migration in _MIGRATIONS:
+            try:
+                self._conn.execute(migration)
+            except sqlite3.OperationalError:
+                pass  # already applied (duplicate column) -- not an error
         self._conn.commit()
 
     @contextmanager

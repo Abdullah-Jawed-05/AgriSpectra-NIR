@@ -15,7 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+import pandas as pd
+
 from core.config import AppConfig
+from pipeline.scripts import import_v0_baseline
 
 OnLine = Callable[[str, str], None]  # (stage_name, line)
 OnProgress = Callable[[str, float], None]  # (stage_name, 0..1)
@@ -222,6 +225,21 @@ class PipelineRunner:
         evaluation_report = json.loads((eval_dir / "evaluation_report.json").read_text())
         confusion_matrix = _read_confusion_matrix(eval_dir / "confusion_matrix.csv")
 
+        # --- V0 baseline comparison (in-process, no subprocess) -----------
+        # Not a pipeline "stage" in its own right (no separate stepper
+        # entry) -- just a same-test-set comparison so "did V1 beat V0"
+        # is a number on the results dashboard instead of manual analysis
+        # against docs/VALIDATION.md. Never fails the run: a problem here
+        # only means the comparison is unavailable, not that training failed.
+        v0_baseline = None
+        try:
+            v0 = import_v0_baseline(self.config)
+            test_df = pd.read_csv(split_dir / "test.csv")
+            v0_baseline = v0.evaluate_v0_baseline(test_df, evaluation_report["label_classes"])
+            line_cb("evaluate", f"V0 baseline on the same test set: macro-F1 {v0_baseline['macro_f1']:.3f}")
+        except Exception as exc:  # noqa: BLE001
+            line_cb("evaluate", f"V0 baseline comparison skipped: {exc}")
+
         return {
             "work_dir": str(work_dir),
             "model_dir": str(model_dir),
@@ -230,6 +248,7 @@ class PipelineRunner:
             "training_metadata": training_metadata,
             "evaluation_report": evaluation_report,
             "confusion_matrix": confusion_matrix,
+            "v0_baseline": v0_baseline,
         }
 
     def _stage(self, on_stage_change: Optional[Callable[[str], None]], name: str) -> None:

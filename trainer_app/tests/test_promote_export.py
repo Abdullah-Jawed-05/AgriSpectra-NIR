@@ -8,7 +8,7 @@ import pytest
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 
-from promote.export import promote_model
+from promote.export import copy_promoted_to, promote_model
 from promote.fallback_codegen import export_forest_to_dart
 
 
@@ -48,6 +48,21 @@ def test_promote_model_m2cgen_path(tmp_path, trained_model_dir):
 
     feature_cols = json.loads((result.export_dir / "feature_columns.json").read_text())
     assert feature_cols == result.feature_columns
+
+
+def test_copy_promoted_to_copies_both_dart_files(tmp_path, trained_model_dir):
+    model_dir, _model, _x = trained_model_dir
+    export_root = tmp_path / "export"
+    result = promote_model(model_dir, export_root, run_id="r1", version_label="t1")
+
+    destination = tmp_path / "app_lib_ml"
+    copied = copy_promoted_to(result.export_dir, destination)
+
+    names = {p.name for p in copied}
+    assert names == {"model_v1_generated.dart", "agrispectra_model_v1_adapter.dart"}
+    for p in copied:
+        assert p.is_file()
+        assert p.read_text() == (result.export_dir / p.name).read_text()
 
 
 def test_fallback_codegen_matches_sklearn_predict(trained_model_dir):

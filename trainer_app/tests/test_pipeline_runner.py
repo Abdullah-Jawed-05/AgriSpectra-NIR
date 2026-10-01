@@ -30,5 +30,10 @@ def test_full_pipeline_run_against_real_scripts(config, db, two_batch_raw_datase
     assert "macro_f1" in evaluation_report
     assert len(result["confusion_matrix"]) == len(evaluation_report["label_classes"])
 
+    v0_baseline = result["v0_baseline"]
+    assert v0_baseline is not None  # ran in-process against the real test.csv, no subprocess needed
+    assert "macro_f1" in v0_baseline
+    assert any("V0 baseline" in line for stage, line in lines if stage == "evaluate")
+
     row = db.get_run(run_id)
     assert row["current_stage"] == "evaluate"

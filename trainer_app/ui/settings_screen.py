@@ -92,6 +92,22 @@ class SettingsScreen:
                         ],
                     )
                 ),
+                card(
+                    ft.Column(
+                        spacing=14,
+                        controls=[
+                            section_title("Flutter app"),
+                            row_with_browse("app_lib_ml_dir", "app/lib/ml/ directory", "where \"Copy to app\" drops the two promoted Dart files"),
+                            ft.Text(
+                                "Configured: vision_pipeline.dart found at this location"
+                                if cfg.is_app_lib_ml_dir_configured()
+                                else "Not configured — vision_pipeline.dart not found here yet",
+                                size=12,
+                                color=theme.CLASS_COLORS["GOOD"] if cfg.is_app_lib_ml_dir_configured() else theme.CLASS_COLORS["BROKEN"],
+                            ),
+                        ],
+                    )
+                ),
                 ft.Row(
                     controls=[
                         ft.FilledButton("Save settings", on_click=self._save, style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF")),

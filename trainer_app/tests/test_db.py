@@ -66,3 +66,21 @@ def test_rejected_photos_override(db):
     assert rows[0]["overridden"] == 0
     db.mark_rejected_overridden(rows[0]["id"])
     assert db.rejected_photos(sid)[0]["overridden"] == 1
+
+
+def test_v0_baseline_json_column(db):
+    """v0_baseline_json was added after the original schema shipped —
+    confirms both a fresh DB has it, and re-opening an existing DB file
+    (exercising the ALTER TABLE migration path) doesn't error."""
+    import json
+
+    from data.db import Database
+
+    run_id = db.create_run("/tmp/w")
+    db.finish_run(run_id, v0_baseline_json=json.dumps({"macro_f1": 0.4}))
+    row = db.get_run(run_id)
+    assert json.loads(row["v0_baseline_json"]) == {"macro_f1": 0.4}
+
+    # Re-opening the same file re-runs the migration list; must be a no-op.
+    db2 = Database(db.path)
+    assert json.loads(db2.get_run(run_id)["v0_baseline_json"]) == {"macro_f1": 0.4}

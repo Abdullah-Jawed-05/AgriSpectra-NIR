@@ -44,6 +44,21 @@ def _discover_python_exe() -> str:
     return sys.executable
 
 
+def _discover_app_lib_ml_dir() -> str:
+    """Find the Flutter app's `app/lib/ml/` directory — the "Copy to app"
+    destination for Promote to App (§4.3). Same two-candidate strategy as
+    `_discover_pipeline_dir`: next to a packaged executable, or two levels
+    up from this checkout (trainer_app/ and app/ as siblings)."""
+    candidates = []
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent / "app" / "lib" / "ml")
+    candidates.append(Path(__file__).resolve().parents[2] / "app" / "lib" / "ml")
+    for c in candidates:
+        if (c / "vision_pipeline.dart").is_file():
+            return str(c)
+    return str(candidates[-1]) if candidates else ""
+
+
 @dataclass
 class AppConfig:
     raw_data_root: str = field(default_factory=lambda: str(paths.default_dataset_root() / "raw"))
@@ -52,6 +67,7 @@ class AppConfig:
     export_root: str = field(default_factory=lambda: str(paths.default_dataset_root() / "export"))
     pipeline_dir: str = field(default_factory=_discover_pipeline_dir)
     python_exe: str = field(default_factory=_discover_python_exe)
+    app_lib_ml_dir: str = field(default_factory=_discover_app_lib_ml_dir)
 
     def ensure_dirs(self) -> None:
         for p in (self.raw_data_root, self.models_root, self.work_root, self.export_root):
@@ -68,6 +84,9 @@ class AppConfig:
 
     def is_pipeline_configured(self) -> bool:
         return (self.scripts_dir() / "prepare_dataset.py").is_file()
+
+    def is_app_lib_ml_dir_configured(self) -> bool:
+        return (Path(self.app_lib_ml_dir) / "vision_pipeline.dart").is_file()
 
     def to_dict(self) -> dict:
         return asdict(self)
