@@ -9,6 +9,7 @@ from pathlib import Path
 import flet as ft
 
 from core import theme
+from sort.phone_import import import_phone_export
 from sort.session import SortSession, default_batch_id
 from ui.components import card, class_counts_row, section_title
 
@@ -41,6 +42,8 @@ class SortScreen:
         self.triage_summary_container = ft.Column(spacing=10)
         self.allow_textured_cb = ft.Checkbox(label="Allow textured background", value=False)
         self.one_seed_cb = ft.Checkbox(label="One seed per photo (macro shots)", value=False)
+        self.phone_import_text = ft.Text("", size=12, color=theme.INK_FAINT)
+        self.phone_import_summary_container = ft.Column(spacing=6)
 
     # ---- lifecycle ------------------------------------------------
 
@@ -82,6 +85,21 @@ class SortScreen:
                     self.import_progress_text,
                     self.import_progress_bar,
                     self.triage_summary_container,
+                    ft.Divider(height=1),
+                    section_title("Or import already-sorted data from the phone app"),
+                    ft.Text(
+                        "Seeds verified via \"Make Our App Better\" and exported as a zip go "
+                        "straight into this crop's raw data — no re-sorting needed.",
+                        size=12,
+                        color=theme.INK_FAINT,
+                    ),
+                    ft.OutlinedButton(
+                        "Import phone export (.zip)…",
+                        icon=ft.Icons.PHONE_IPHONE_ROUNDED,
+                        on_click=self._on_import_phone_export,
+                    ),
+                    self.phone_import_text,
+                    self.phone_import_summary_container,
                 ],
             )
         )
@@ -209,6 +227,44 @@ class SortScreen:
         self.import_progress_bar.visible = False
         self.import_progress_text.value = ""
         self._show_triage_summary(summary)
+        self._rebuild()
+
+    async def _on_import_phone_export(self, e) -> None:
+        picker = ft.FilePicker()
+        self.ctx.page.overlay.append(picker)
+        self.ctx.page.update()
+        files = await picker.pick_files(dialog_title="Choose a phone export zip", allowed_extensions=["zip"])
+        self.ctx.page.overlay.remove(picker)
+        self.ctx.page.update()
+        if not files:
+            return
+        self.ctx.page.run_thread(self._do_import_phone_export, files[0].path)
+
+    def _do_import_phone_export(self, zip_path: str) -> None:
+        self.phone_import_text.value = "Importing…"
+        self._safe_update()
+        try:
+            summary = import_phone_export(Path(zip_path), Path(self.ctx.config.raw_data_root), self.ctx.crop)
+        except (OSError, ValueError) as exc:
+            self.phone_import_text.value = ""
+            self.ctx.notify(f"Could not read that zip: {exc}", error=True)
+            return
+
+        if summary.total_added == 0:
+            self.phone_import_text.value = ""
+            self.ctx.notify("Nothing imported — see details below.", error=True)
+        else:
+            batches = ", ".join(sorted(summary.batches))
+            self.phone_import_text.value = f"Imported {summary.total_added} seed(s) into batch(es): {batches}."
+
+        rows = [
+            ft.Text(f"{theme.CLASS_LABELS.get(label, label)}: {n}", size=12, color=theme.CLASS_COLORS.get(label, theme.INK))
+            for label, n in sorted(summary.added.items())
+        ]
+        for reason in summary.skipped:
+            rows.append(ft.Text(f"Skipped — {reason}", size=11, color=theme.INK_FAINT))
+        self.phone_import_summary_container.controls = rows
+        self._safe_update()
         self._rebuild()
 
     def _show_triage_summary(self, summary) -> None:

@@ -98,6 +98,37 @@ def test_sort_screen_full_loop_via_ui(config, db, import_folder):
     assert screen.session.stats()["filed"] == stats_before["filed"] + 1
 
 
+def test_sort_screen_phone_export_import_via_ui(config, db, tmp_path):
+    import zipfile
+
+    from ui.sort_screen import SortScreen
+
+    zip_path = tmp_path / "export.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("barley/app_2026-10-02/GOOD/seed1.png", b"a")
+        zf.writestr("barley/app_2026-10-02/DAMAGED/seed2.png", b"b")
+
+    class Ctx:
+        pass
+
+    ctx = Ctx()
+    ctx.config = config
+    ctx.db = db
+    ctx.crop = "barley"
+    ctx.page = StubPage()
+    ctx.navigate = lambda n: None
+    ctx.notify = lambda *a, **k: None
+
+    screen = SortScreen(ctx)
+    screen.build()
+    screen._do_import_phone_export(str(zip_path))
+
+    assert "Imported 2 seed(s)" in screen.phone_import_text.value
+    raw_root = __import__("pathlib").Path(config.raw_data_root)
+    assert (raw_root / "barley" / "app_2026-10-02" / "GOOD" / "seed1.png").is_file()
+    assert (raw_root / "barley" / "app_2026-10-02" / "DAMAGED" / "seed2.png").is_file()
+
+
 def test_train_screen_preflight_disables_start_when_no_data(config, db):
     from ui.train_screen import TrainScreen
 
