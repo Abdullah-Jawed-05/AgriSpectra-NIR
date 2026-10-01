@@ -282,6 +282,24 @@ class Database:
             )
         return run_id
 
+    def reconcile_stale_runs(self) -> int:
+        """Marks every run still 'running' as failed — called once at app
+        startup (main.py), before any new run can be started.
+
+        A row only stays 'running' across a restart if the process that
+        was driving it (this app) is gone: nothing here persists a
+        subprocess handle across launches, so there is no live run left
+        to resume. Left alone, such a row would sit in History forever
+        looking like an in-progress run that never finishes (§8.4 — a
+        crash must not leave the dataset/run state looking healthy when
+        it isn't)."""
+        with self.cursor() as cur:
+            cur.execute(
+                "UPDATE runs SET status='failed', error='App was closed or crashed during this run.' "
+                "WHERE status='running'"
+            )
+            return cur.rowcount
+
     def set_work_dir(self, run_id: str, work_dir: str) -> None:
         with self.cursor() as cur:
             cur.execute("UPDATE runs SET work_dir=? WHERE id=?", (work_dir, run_id))

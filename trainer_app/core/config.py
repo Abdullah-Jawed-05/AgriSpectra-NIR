@@ -52,7 +52,6 @@ class AppConfig:
     export_root: str = field(default_factory=lambda: str(paths.default_dataset_root() / "export"))
     pipeline_dir: str = field(default_factory=_discover_pipeline_dir)
     python_exe: str = field(default_factory=_discover_python_exe)
-    sound_enabled: bool = False
 
     def ensure_dirs(self) -> None:
         for p in (self.raw_data_root, self.models_root, self.work_root, self.export_root):

@@ -26,6 +26,7 @@ def main(page: ft.Page) -> None:
     config = AppConfig.load()
     config.ensure_dirs()
     db = Database(app_db_file())
+    db.reconcile_stale_runs()  # any run still "running" belongs to a process that's gone
     build_page(page, config, db)
 
 

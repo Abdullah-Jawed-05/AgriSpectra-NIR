@@ -39,6 +39,25 @@ def test_run_history_and_best_run(db):
     assert [r["id"] for r in runs] == [r2, r1]
 
 
+def test_reconcile_stale_runs_marks_orphaned_running_rows_failed(db):
+    r1 = db.create_run("/tmp/w1")  # left at status='running' -- simulates a crash
+    r2 = db.create_run("/tmp/w2")
+    db.finish_run(r2, macro_f1=0.9, balanced_accuracy=0.9)  # a normally-completed run
+
+    n = db.reconcile_stale_runs()
+    assert n == 1
+
+    row1 = db.get_run(r1)
+    assert row1["status"] == "failed"
+    assert row1["error"]
+
+    row2 = db.get_run(r2)
+    assert row2["status"] == "succeeded"  # untouched
+
+    # idempotent: nothing left to reconcile on a second call
+    assert db.reconcile_stale_runs() == 0
+
+
 def test_rejected_photos_override(db):
     sid = db.create_session("barley", "batch_1", "/tmp/raw")
     db.add_rejected(sid, "/tmp/bad.jpg", "textured background")
