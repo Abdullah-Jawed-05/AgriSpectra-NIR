@@ -40,12 +40,15 @@ class StageResult:
     duration_s: float
 
 
-def _run_subprocess(
+def run_subprocess(
     argv: list[str],
     cwd: Optional[Path],
     stage_name: str,
     on_line: Optional[OnLine],
 ) -> StageResult:
+    """Streams a subprocess's stdout/stderr line-by-line to `on_line`.
+    Shared beyond the four training stages — also used by
+    promote/activate.py's APK build (`stage_name="build_apk"`)."""
     start = time.monotonic()
     proc = subprocess.Popen(
         argv,
@@ -144,7 +147,7 @@ class PipelineRunner:
         )
         watcher.start()
         try:
-            result = _run_subprocess(
+            result = run_subprocess(
                 self._argv(
                     str(self.config.scripts_dir() / "prepare_dataset.py"),
                     "--raw-dir", str(Path(self.config.raw_data_root)),
@@ -178,7 +181,7 @@ class PipelineRunner:
         )
         if test_batch:
             argv += ["--test-batch", test_batch]
-        result = _run_subprocess(argv, pipeline_dir, "split", line_cb)
+        result = run_subprocess(argv, pipeline_dir, "split", line_cb)
         if on_progress:
             on_progress("split", 1.0)
         if result.returncode != 0:
@@ -196,7 +199,7 @@ class PipelineRunner:
         )
         if model_kind:
             argv += ["--model", model_kind]
-        result = _run_subprocess(argv, pipeline_dir, "train", line_cb)
+        result = run_subprocess(argv, pipeline_dir, "train", line_cb)
         if on_progress:
             on_progress("train", 1.0)
         if result.returncode != 0:
@@ -206,7 +209,7 @@ class PipelineRunner:
 
         # --- Stage 4: evaluate_model.py -----------------------------------
         self._stage(on_stage_change, "evaluate")
-        result = _run_subprocess(
+        result = run_subprocess(
             self._argv(
                 str(self.config.evaluation_dir() / "evaluate_model.py"),
                 "--model", str(model_dir),

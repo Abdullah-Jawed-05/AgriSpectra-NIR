@@ -124,12 +124,27 @@ trainer_app/
   pipeline/                 Train Mode: pre-flight scan (preflight.py), subprocess orchestration
                              of the real ml/ scripts (runner.py), the ml/ import seam (scripts.py)
   promote/                  "Promote to App": m2cgen Dart export + adapter (export.py), the
-                             scikit-learn tree-introspection fallback codegen (fallback_codegen.py)
+                             scikit-learn tree-introspection fallback codegen (fallback_codegen.py),
+                             and "Enable Model V1 & rebuild APK" (activate.py) — flips the
+                             useModelV1 flag + runs flutter build apk, never on its own
   ui/                       Flet screens: app.py (shell/nav), home.py, sort_screen.py,
                              train_screen.py, history_screen.py, settings_screen.py, components.py
   tests/                    pytest — fast by default, `-m slow` for the real pipeline run
   assets/                   window icon + its generator
 ```
+
+## From a trained model to a new APK
+
+Train a run → **Promote to App** → **Copy to app** (writes the two
+generated Dart files into Settings' `app/lib/ml/` directory) → **Enable
+Model V1 & rebuild APK**, which shows the V1-vs-V0 comparison for that
+run, and on confirmation flips `useModelV1` to `true` in
+`app/lib/ml/model_v1_predictor.dart` and runs `flutter build apk` (needs
+Settings' Flutter SDK executable set). It then offers to `flutter
+install` to a connected device if one's found. Nothing in this chain
+runs on its own after a promote or a copy — each step is its own button,
+and the comparison is shown before the one step that actually changes
+what the app predicts.
 
 ## Design notes / non-negotiables
 

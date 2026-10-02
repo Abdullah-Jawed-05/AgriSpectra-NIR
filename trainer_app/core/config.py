@@ -14,6 +14,7 @@ import shutil
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from . import paths
 
@@ -74,6 +75,14 @@ def _discover_app_lib_ml_dir() -> str:
     return str(candidates[-1]) if candidates else ""
 
 
+def _discover_flutter_exe() -> str:
+    """Find the `flutter` SDK executable, for "Enable Model V1 & rebuild
+    APK" (§4.4). Like `python_exe`, this machine may have more than one
+    Flutter checkout — PATH's `flutter` is only a reasonable default, not
+    guaranteed correct; Settings lets it be overridden."""
+    return shutil.which("flutter") or ""
+
+
 @dataclass
 class AppConfig:
     raw_data_root: str = field(default_factory=lambda: str(paths.default_dataset_root() / "raw"))
@@ -83,6 +92,7 @@ class AppConfig:
     pipeline_dir: str = field(default_factory=_discover_pipeline_dir)
     python_exe: str = field(default_factory=_discover_python_exe)
     app_lib_ml_dir: str = field(default_factory=_discover_app_lib_ml_dir)
+    flutter_exe: str = field(default_factory=_discover_flutter_exe)
 
     def ensure_dirs(self) -> None:
         for p in (self.raw_data_root, self.models_root, self.work_root, self.export_root):
@@ -102,6 +112,25 @@ class AppConfig:
 
     def is_app_lib_ml_dir_configured(self) -> bool:
         return (Path(self.app_lib_ml_dir) / "vision_pipeline.dart").is_file()
+
+    def app_root(self) -> Optional[Path]:
+        """The Flutter app's project root — two levels up from
+        app_lib_ml_dir (app/lib/ml -> app/lib -> app). None if
+        app_lib_ml_dir isn't set deep enough to have two parents."""
+        p = Path(self.app_lib_ml_dir)
+        return p.parents[1] if len(p.parents) > 1 else None
+
+    def is_flutter_configured(self) -> bool:
+        """Only checks what's cheap and reliable to check ahead of time —
+        flutter_exe not being empty, and a pubspec.yaml existing where
+        app_root() points. Deliberately doesn't try to run `flutter_exe`
+        here (e.g. to validate it resolves): a bare command name like
+        "flutter" is valid and PATH-resolved at actual subprocess time,
+        same as python_exe elsewhere in this file never being run just to
+        validate it. build_apk's own FileNotFoundError handling covers
+        the case where it doesn't."""
+        root = self.app_root()
+        return bool(self.flutter_exe) and root is not None and (root / "pubspec.yaml").is_file()
 
     def to_dict(self) -> dict:
         return asdict(self)

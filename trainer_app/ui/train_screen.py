@@ -11,6 +11,7 @@ import flet as ft
 from core import theme
 from pipeline.preflight import scan_raw_data
 from pipeline.runner import PipelineRunner, StageFailed
+from promote.activate import PredictorFileError, build_apk, enable_model_v1, install_apk, list_connected_devices
 from promote.export import copy_promoted_to, promote_model
 from ui.components import card, class_counts_row, confusion_matrix_grid, leakage_badge, pipeline_stepper, section_title, stat_tile
 
@@ -40,6 +41,9 @@ class TrainScreen:
         self.version_label_field = ft.TextField(label="Version label", hint_text="e.g. v1_2026-10-01", width=260, dense=True)
         self.promote_status = ft.Column(spacing=8)
         self.copy_status = ft.Column(spacing=6)
+        self.activate_status = ft.Column(spacing=8)
+        self.build_log_lines: list[str] = []
+        self.build_log_view = ft.Column(spacing=1, scroll=ft.ScrollMode.AUTO, height=180)
 
     def on_show(self) -> None:
         self._rebuild_preflight()
@@ -254,6 +258,9 @@ class TrainScreen:
         self.version_label_field.value = f"run_{run_id}"
         self.promote_status.controls = []
         self.copy_status.controls = []
+        self.activate_status.controls = []
+        self.build_log_lines = []
+        self.build_log_view.controls = []
 
         def do_promote(e) -> None:
             self.ctx.page.run_thread(self._do_promote, run_id)
@@ -310,7 +317,7 @@ class TrainScreen:
         label_text = "\n".join(f"{i}: {c}" for i, c in enumerate(result.label_classes))
 
         def do_copy(e) -> None:
-            self._do_copy_to_app(result.export_dir)
+            self._do_copy_to_app(result.export_dir, run_id)
 
         self.promote_status.controls = [
             ft.Text(f"Exported ({result.method}) to {result.export_dir}", size=12, color=theme.CLASS_COLORS["GOOD"]),
@@ -334,7 +341,7 @@ class TrainScreen:
         ]
         self._safe_update()
 
-    def _do_copy_to_app(self, export_dir: Path) -> None:
+    def _do_copy_to_app(self, export_dir: Path, run_id: str) -> None:
         try:
             copied = copy_promoted_to(export_dir, Path(self.ctx.config.app_lib_ml_dir))
         except Exception as exc:  # noqa: BLE001
@@ -343,17 +350,173 @@ class TrainScreen:
             return
 
         names = "\n".join(f"  {p.name}" for p in copied)
+
+        def open_confirm(e) -> None:
+            self._open_activate_confirm(run_id)
+
         self.copy_status.controls = [
             ft.Text(f"Copied to {self.ctx.config.app_lib_ml_dir}:\n{names}", size=12, color=theme.CLASS_COLORS["GOOD"]),
             ft.Text(
                 "This only makes the model available, not active — useModelV1 in "
-                "app/lib/ml/model_v1_predictor.dart is still false. Flip it manually "
-                "(and rebuild the app) only after checking this run against held-out "
-                "data beats V0, per docs/VALIDATION.md.",
+                "app/lib/ml/model_v1_predictor.dart is still false.",
                 size=11,
                 color=theme.INK_FAINT,
             ),
+            ft.Divider(),
+            ft.FilledButton(
+                "Enable Model V1 & rebuild APK",
+                icon=ft.Icons.ROCKET_LAUNCH_OUTLINED,
+                on_click=open_confirm,
+                style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF"),
+            ),
+            self.activate_status,
         ]
+        self._safe_update()
+
+    # ---- enable Model V1 & rebuild APK -----------------------------------
+
+    def _open_activate_confirm(self, run_id: str) -> None:
+        run = self.ctx.db.get_run(run_id)
+        macro_f1 = run["macro_f1"] or 0.0
+        v0_baseline = json.loads(run["v0_baseline_json"] or "null")
+
+        if v0_baseline is None:
+            comparison = ft.Text(
+                "No V0 baseline comparison is available for this run — proceeding without it.",
+                size=12,
+                color=theme.CLASS_COLORS["DAMAGED"],
+            )
+        else:
+            beats_v0 = macro_f1 > v0_baseline["macro_f1"]
+            comparison = ft.Column(
+                spacing=4,
+                controls=[
+                    ft.Text(
+                        f"V1 macro-F1 {macro_f1:.1%} vs V0 {v0_baseline['macro_f1']:.1%}",
+                        size=13,
+                        weight=ft.FontWeight.W_600,
+                        color=theme.CLASS_COLORS["GOOD"] if beats_v0 else theme.CLASS_COLORS["BROKEN"],
+                    ),
+                    ft.Text(
+                        "This run beats the V0 baseline on held-out data."
+                        if beats_v0
+                        else "This run does NOT beat the V0 baseline — enabling it would make on-device "
+                        "predictions worse by this run's own numbers.",
+                        size=12,
+                        color=theme.INK_FAINT if beats_v0 else theme.CLASS_COLORS["BROKEN"],
+                    ),
+                ],
+            )
+
+        def do_confirm(e) -> None:
+            self.ctx.page.pop_dialog()
+            self.ctx.page.run_thread(self._do_enable_and_build, run_id)
+
+        def do_cancel(e) -> None:
+            self.ctx.page.pop_dialog()
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Enable Model V1 on-device?"),
+            content=ft.Column(
+                tight=True,
+                spacing=12,
+                controls=[
+                    comparison,
+                    ft.Text(
+                        "This flips useModelV1 to true in model_v1_predictor.dart and runs "
+                        "flutter build apk. The new APK replaces the current one only once you "
+                        "install it.",
+                        size=12,
+                        color=theme.INK_FAINT,
+                    ),
+                ],
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=do_cancel),
+                ft.FilledButton("Enable & build", on_click=do_confirm, style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF")),
+            ],
+        )
+        self.ctx.page.show_dialog(dialog)
+
+    def _append_build_log(self, stage: str, line: str) -> None:
+        self.build_log_lines.append(line)
+        self.build_log_lines = self.build_log_lines[-MAX_LOG_LINES:]
+        self.build_log_view.controls = [ft.Text(ln, size=10, color="#D7E8E2", font_family="Consolas, monospace") for ln in self.build_log_lines[-200:]]
+        self._safe_update()
+
+    def _do_enable_and_build(self, run_id: str) -> None:
+        app_lib_ml_dir = Path(self.ctx.config.app_lib_ml_dir)
+        try:
+            enable_model_v1(app_lib_ml_dir)
+        except PredictorFileError as exc:
+            self.activate_status.controls = [ft.Text(f"Could not enable Model V1: {exc}", size=12, color=theme.CLASS_COLORS["BROKEN"])]
+            self._safe_update()
+            return
+
+        if not self.ctx.config.is_flutter_configured():
+            self.activate_status.controls = [
+                ft.Text("useModelV1 is now true.", size=12, color=theme.CLASS_COLORS["GOOD"]),
+                ft.Text(
+                    "But the Flutter SDK isn't configured — set it in Settings, then rebuild the "
+                    "APK yourself with `flutter build apk` from the app/ directory.",
+                    size=12,
+                    color=theme.CLASS_COLORS["BROKEN"],
+                ),
+            ]
+            self._safe_update()
+            return
+
+        self.build_log_lines = []
+        self.build_log_view.controls = []
+        self.activate_status.controls = [
+            ft.Text("useModelV1 is now true. Running flutter build apk — this can take a few minutes…", size=12, color=theme.CLASS_COLORS["GOOD"]),
+            ft.ExpansionTile(title=ft.Text("Build log", size=13), controls=[ft.Container(content=self.build_log_view, bgcolor="#0B1210", border_radius=8, padding=10)]),
+        ]
+        self._safe_update()
+
+        app_root = self.ctx.config.app_root()
+        result = build_apk(self.ctx.config.flutter_exe, app_root, on_line=self._append_build_log)
+
+        if not result.success:
+            self.activate_status.controls.append(
+                ft.Text(f"Build failed after {result.duration_s:.0f}s: {result.log[-300:]}", size=12, color=theme.CLASS_COLORS["BROKEN"])
+            )
+            self._safe_update()
+            return
+
+        def do_install(e) -> None:
+            self.ctx.page.run_thread(self._do_install, app_root)
+
+        devices = list_connected_devices(self.ctx.config.flutter_exe)
+        self.activate_status.controls.append(
+            ft.Text(f"Built in {result.duration_s:.0f}s: {result.apk_path}", size=12, color=theme.CLASS_COLORS["GOOD"])
+        )
+        if devices:
+            self.activate_status.controls.append(
+                ft.Row(
+                    spacing=10,
+                    controls=[
+                        ft.Text(f"Connected: {', '.join(devices)}", size=11, color=theme.INK_FAINT),
+                        ft.OutlinedButton("Install to connected device", icon=ft.Icons.INSTALL_MOBILE_OUTLINED, on_click=do_install),
+                    ],
+                )
+            )
+        else:
+            self.activate_status.controls.append(
+                ft.Text("No connected device found — install the APK above manually when ready.", size=11, color=theme.INK_FAINT)
+            )
+        self._safe_update()
+
+    def _do_install(self, app_root: Path) -> None:
+        result = install_apk(self.ctx.config.flutter_exe, app_root, on_line=self._append_build_log)
+        ok = result.returncode == 0
+        self.activate_status.controls.append(
+            ft.Text(
+                "Installed." if ok else f"Install failed: {result.log[-300:]}",
+                size=12,
+                color=theme.CLASS_COLORS["GOOD"] if ok else theme.CLASS_COLORS["BROKEN"],
+            )
+        )
         self._safe_update()
 
     def _safe_update(self) -> None:

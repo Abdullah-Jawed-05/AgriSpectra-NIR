@@ -174,7 +174,7 @@ def test_train_screen_promote_and_copy_to_app(config, db, tmp_path):
     export_dir = Path(config.export_root) / f"trained_model_run_{run_id}"
     assert export_dir.is_dir()  # Promote to App actually ran
 
-    screen._do_copy_to_app(export_dir)
+    screen._do_copy_to_app(export_dir, run_id)
 
     app_ml_dir = Path(config.app_lib_ml_dir)
     assert (app_ml_dir / "model_v1_generated.dart").is_file()
@@ -182,6 +182,121 @@ def test_train_screen_promote_and_copy_to_app(config, db, tmp_path):
     copy_text = "".join(str(c.value) for c in screen.copy_status.controls if hasattr(c, "value"))
     assert "Copied to" in copy_text
     assert "useModelV1" in copy_text
+
+
+def test_train_screen_enable_model_v1_and_build_apk(config, db, tmp_path):
+    from unittest.mock import patch
+
+    from pipeline.runner import StageResult
+    from promote.activate import ApkBuildResult
+    from ui.train_screen import TrainScreen
+
+    app_root = tmp_path / "app"
+    app_ml_dir = app_root / "lib" / "ml"
+    app_ml_dir.mkdir(parents=True)
+    (app_ml_dir / "model_v1_predictor.dart").write_text("const bool useModelV1 = false;\n")
+    (app_root / "pubspec.yaml").write_text("name: agrispectra\n")
+
+    config.app_lib_ml_dir = str(app_ml_dir)
+    config.flutter_exe = "flutter"
+
+    run_id = db.create_run(str(tmp_path / "work"))
+    db.finish_run(
+        run_id,
+        model_dir=str(tmp_path / "model"),
+        macro_f1=0.8,
+        balanced_accuracy=0.75,
+        v0_baseline_json='{"macro_f1": 0.4, "scope_note": "V0 only predicts GOOD or DAMAGED."}',
+    )
+
+    class Ctx:
+        pass
+
+    ctx = Ctx()
+    ctx.config = config
+    ctx.db = db
+    ctx.crop = "barley"
+    ctx.page = StubPage()
+    ctx.navigate = lambda n: None
+    ctx.notify = lambda *a, **k: None
+
+    screen = TrainScreen(ctx)
+    screen.build()
+
+    def collect_text(control) -> str:
+        parts = []
+        value = getattr(control, "value", None)
+        if value:
+            parts.append(str(value))
+        for child in getattr(control, "controls", None) or []:
+            parts.append(collect_text(child))
+        return " ".join(parts)
+
+    screen._open_activate_confirm(run_id)
+    assert len(ctx.page._dialogs) == 1
+    dialog_text = collect_text(ctx.page._dialogs[0].content)
+    assert "80.0%" in dialog_text  # the actual comparison numbers were shown, not just a generic prompt
+
+    apk_path = app_root / "build" / "app" / "outputs" / "flutter-apk" / "app-release.apk"
+    with (
+        patch("ui.train_screen.build_apk", return_value=ApkBuildResult(True, apk_path, "BUILD SUCCESSFUL", 42.0)) as mock_build,
+        patch("ui.train_screen.list_connected_devices", return_value=["Pixel 7 (mobile)"]),
+    ):
+        screen._do_enable_and_build(run_id)
+
+    mock_build.assert_called_once()
+    assert (app_ml_dir / "model_v1_predictor.dart").read_text().strip() == "const bool useModelV1 = true;"
+    status_text = collect_text(screen.activate_status)
+    assert "useModelV1 is now true" in status_text
+    assert str(apk_path) in status_text
+    assert "Pixel 7" in status_text
+
+    with patch("ui.train_screen.install_apk", return_value=StageResult("install_apk", 0, "Installing...", 3.0)) as mock_install:
+        screen._do_install(app_root)
+    mock_install.assert_called_once()
+    assert "Installed." in collect_text(screen.activate_status)
+
+
+def test_train_screen_enable_model_v1_build_failure_is_reported(config, db, tmp_path):
+    from unittest.mock import patch
+
+    from promote.activate import ApkBuildResult
+    from ui.train_screen import TrainScreen
+
+    app_root = tmp_path / "app"
+    app_ml_dir = app_root / "lib" / "ml"
+    app_ml_dir.mkdir(parents=True)
+    (app_ml_dir / "model_v1_predictor.dart").write_text("const bool useModelV1 = false;\n")
+    (app_root / "pubspec.yaml").write_text("name: agrispectra\n")
+
+    config.app_lib_ml_dir = str(app_ml_dir)
+    config.flutter_exe = "flutter"
+
+    run_id = db.create_run(str(tmp_path / "work"))
+    db.finish_run(run_id, model_dir=str(tmp_path / "model"), macro_f1=0.5)
+
+    class Ctx:
+        pass
+
+    ctx = Ctx()
+    ctx.config = config
+    ctx.db = db
+    ctx.crop = "barley"
+    ctx.page = StubPage()
+    ctx.navigate = lambda n: None
+    ctx.notify = lambda *a, **k: None
+
+    screen = TrainScreen(ctx)
+    screen.build()
+
+    with patch("ui.train_screen.build_apk", return_value=ApkBuildResult(False, None, "BUILD FAILED: gradle error", 5.0)):
+        screen._do_enable_and_build(run_id)
+
+    # useModelV1 still flips -- that part succeeded independently of the build.
+    assert "true" in (app_ml_dir / "model_v1_predictor.dart").read_text()
+    status_text = "".join(str(c.value) for c in screen.activate_status.controls if hasattr(c, "value"))
+    assert "Build failed" in status_text
+    assert "gradle error" in status_text
 
 
 def test_train_screen_preflight_disables_start_when_no_data(config, db):

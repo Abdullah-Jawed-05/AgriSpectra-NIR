@@ -105,6 +105,14 @@ class SettingsScreen:
                                 size=12,
                                 color=theme.CLASS_COLORS["GOOD"] if cfg.is_app_lib_ml_dir_configured() else theme.CLASS_COLORS["BROKEN"],
                             ),
+                            self._field("flutter_exe", "Flutter SDK executable", "the `flutter` command — needed for \"Enable Model V1 & rebuild APK\""),
+                            ft.Text(
+                                "Configured: pubspec.yaml found in the app root"
+                                if cfg.is_flutter_configured()
+                                else "Not configured — set both the app/lib/ml/ directory above and the flutter executable",
+                                size=12,
+                                color=theme.CLASS_COLORS["GOOD"] if cfg.is_flutter_configured() else theme.CLASS_COLORS["BROKEN"],
+                            ),
                         ],
                     )
                 ),
