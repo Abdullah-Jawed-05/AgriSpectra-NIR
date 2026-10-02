@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>AgriSpectra — Brag</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f7f8f7;
+      }
+      :root {
+        --bg: #f7f8f7;
+        --surface: #ffffff;
+        --surface-alt: #eff2f0;
+        --ink: #171e1b;
+        --ink-muted: #54615b;
+        --ink-faint: #8b968f;
+        --divider: #dde3df;
+        --accent: #0e6e5d;
+        --accent-muted: #dceee9;
+        --good: #1b7a4c;
+        --moderate: #b07a12;
+        --low: #b0401e;
+        --nir: #5b3fa0;
+        --nir-muted: #eae4f6;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Arial,
+          sans-serif;
+        color: var(--ink);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* ---------- shared bits ---------- */
+      .mark {
+        display: block;
+      }
+      .wordmark-row {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+      .wordmark-text {
+        font-size: 44px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        color: var(--ink);
+      }
+      .label-small {
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: 3px;
+        color: var(--ink-muted);
+        text-transform: uppercase;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-size: 22px;
+        font-weight: 600;
+        border: 1px solid transparent;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 14px;
+        border-radius: 7px;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--divider);
+        border-radius: 20px;
+      }
+
+      /* ---------- Scene 1: Hook ---------- */
+      #scene-hook {
+        flex-direction: column;
+        gap: 36px;
+      }
+      #hook-mark {
+        opacity: 0;
+      }
+      #hook-headline {
+        opacity: 0;
+        font-size: 56px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        color: var(--ink);
+        text-align: center;
+      }
+
+      /* ---------- Scene 2: Capture & scan ---------- */
+      #scene-capture {
+        flex-direction: column;
+        gap: 28px;
+      }
+      #capture-caption {
+        opacity: 0;
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--ink-muted);
+        letter-spacing: 0.3px;
+      }
+      .capture-frame {
+        position: relative;
+        width: 860px;
+        height: 560px;
+        background: #ffffff;
+        border: 4px solid var(--ink-faint);
+        border-radius: 18px;
+      }
+      .seed-wrap {
+        position: absolute;
+        width: 46px;
+        height: 28px;
+      }
+      .seed {
+        position: absolute;
+        inset: 0;
+        border-radius: 50% / 50%;
+        background: #c9b48a;
+      }
+      .seed-outline {
+        position: absolute;
+        inset: -7px;
+        border-radius: 50% / 50%;
+        border: 2.5px solid var(--accent);
+        opacity: 0;
+      }
+
+      /* ---------- Scene 3: Batch result ---------- */
+      #scene-result {
+        align-items: flex-start;
+        justify-content: center;
+        flex-direction: column;
+      }
+      .result-panel {
+        width: 1180px;
+        margin: 0 auto;
+      }
+      .result-crop-label {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 3px;
+        color: var(--ink-muted);
+        text-transform: uppercase;
+      }
+      .result-score-row {
+        display: flex;
+        align-items: baseline;
+        gap: 22px;
+        margin-top: 10px;
+      }
+      .result-score {
+        font-size: 128px;
+        font-weight: 800;
+        letter-spacing: -2px;
+        color: var(--ink);
+        opacity: 0;
+      }
+      .confidence-chip {
+        background: var(--accent-muted);
+        color: var(--accent);
+        opacity: 0;
+      }
+      .result-sub {
+        margin-top: 10px;
+        font-size: 24px;
+        color: var(--ink-muted);
+        opacity: 0;
+      }
+      .class-chip-row {
+        display: flex;
+        gap: 16px;
+        margin-top: 34px;
+      }
+      .class-chip {
+        opacity: 0;
+      }
+      .class-chip .count {
+        font-size: 26px;
+        font-weight: 800;
+      }
+      .histogram {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        height: 150px;
+        margin-top: 46px;
+        width: 760px;
+      }
+      .hist-bar {
+        width: 54px;
+        background: var(--accent);
+        border-radius: 6px 6px 0 0;
+        transform-origin: bottom;
+        opacity: 0.85;
+      }
+
+      /* ---------- Scene 4: NIR fusion ---------- */
+      #scene-nir {
+        flex-direction: column;
+        gap: 30px;
+      }
+      .nir-row {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        padding: 26px 34px;
+        width: 760px;
+      }
+      .nir-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--nir-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .nir-title {
+        font-size: 26px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .nir-sub {
+        font-size: 18px;
+        color: var(--ink-muted);
+        margin-top: 4px;
+      }
+      .nir-badge {
+        margin-left: auto;
+      }
+      .badge-sim {
+        background: var(--nir-muted);
+        color: var(--nir);
+      }
+      .badge-connected {
+        background: var(--nir-muted);
+        color: var(--nir);
+        opacity: 0;
+        position: absolute;
+        right: 34px;
+        top: 50%;
+        margin-top: -14px;
+      }
+      #nir-combined {
+        opacity: 0;
+        display: flex;
+        align-items: center;
+        gap: 54px;
+      }
+      .nir-graph {
+        width: 280px;
+        height: 110px;
+      }
+      .nir-combined-score {
+        font-size: 72px;
+        font-weight: 800;
+        color: var(--ink);
+      }
+      .nir-combined-label {
+        font-size: 18px;
+        color: var(--ink-muted);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin-top: 6px;
+      }
+
+      /* ---------- Scene 5: Outro ---------- */
+      #scene-outro {
+        flex-direction: column;
+        gap: 26px;
+      }
+      #outro-wordmark {
+        opacity: 0;
+      }
+      #outro-line {
+        opacity: 0;
+        font-size: 42px;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        color: var(--ink);
+        text-align: center;
+        max-width: 1120px;
+        line-height: 1.35;
+      }
+      #outro-footnote {
+        opacity: 0;
+        font-size: 20px;
+        font-style: italic;
+        color: var(--ink-muted);
+        text-align: center;
+        max-width: 980px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="22"
+      data-width="1920"
+      data-height="1080"
+    >
+      <!-- SCENE 1 — Hook — 0-4s -->
+      <section id="scene-hook" class="clip" data-start="0" data-duration="4" data-track-index="0">
+        <svg id="hook-mark" class="mark" width="120" height="120" viewBox="0 0 120 120">
+          <path
+            d="M60 8 C92 8 106 42 106 64 C106 92 86 112 60 112 C34 112 14 92 14 64 C14 42 28 8 60 8 Z"
+            fill="#0e6e5d"
+          />
+          <rect x="14" y="56" width="92" height="16" fill="#dceee9" />
+        </svg>
+        <div id="hook-headline">Seed quality. From a phone.</div>
+      </section>
+
+      <!-- SCENE 2 — Capture & scan — 4-8.5s (scene-local 0-4.5s) -->
+      <section id="scene-capture" class="clip" data-start="4" data-duration="4.5" data-track-index="0">
+        <div class="capture-frame" id="capture-frame">
+          <div class="seed-wrap" style="left:90px;top:70px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:220px;top:110px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:360px;top:60px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:500px;top:120px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:640px;top:80px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:150px;top:260px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:330px;top:300px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:470px;top:250px"><div class="seed"></div><div class="seed-outline"></div></div>
+          <div class="seed-wrap" style="left:620px;top:310px"><div class="seed"></div><div class="seed-outline"></div></div>
+        </div>
+        <div id="capture-caption" style="position:absolute; bottom:120px;">Single layer, not touching.</div>
+      </section>
+
+      <!-- SCENE 3 — Batch Result — 8.5-14s (scene-local 0-5.5s) -->
+      <section id="scene-result" class="clip" data-start="8.5" data-duration="5.5" data-track-index="0">
+        <div class="result-panel">
+          <div class="result-crop-label">Barley</div>
+          <div class="result-score-row">
+            <div class="result-score" id="result-score">87</div>
+            <span class="chip confidence-chip" id="result-confidence">High confidence</span>
+          </div>
+          <div class="result-sub" id="result-sub">42 seeds analyzed &middot; Multimodal assessment</div>
+          <div class="class-chip-row">
+            <span class="chip class-chip" style="background: rgba(27,122,76,0.12); border-color: rgba(27,122,76,0.35); color:#1a7549;">
+              <span class="count">34</span> Good
+            </span>
+            <span class="chip class-chip" style="background: rgba(176,122,18,0.12); border-color: rgba(176,122,18,0.35); color:#8b610e;">
+              <span class="count">4</span> Damaged
+            </span>
+            <span class="chip class-chip" style="background: rgba(176,64,30,0.12); border-color: rgba(176,64,30,0.35); color:#b0401e;">
+              <span class="count">2</span> Shriveled
+            </span>
+            <span class="chip class-chip" style="background: rgba(139,150,143,0.12); border-color: rgba(139,150,143,0.35); color:#54615b;">
+              <span class="count">2</span> Impurities
+            </span>
+          </div>
+          <div class="histogram" id="histogram">
+            <div class="hist-bar" style="height:30%"></div>
+            <div class="hist-bar" style="height:55%"></div>
+            <div class="hist-bar" style="height:85%"></div>
+            <div class="hist-bar" style="height:100%"></div>
+            <div class="hist-bar" style="height:70%"></div>
+            <div class="hist-bar" style="height:40%"></div>
+            <div class="hist-bar" style="height:18%"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCENE 4 — NIR fusion — 14-17s (scene-local 0-3s) -->
+      <section id="scene-nir" class="clip" data-start="14" data-duration="3" data-track-index="0">
+        <div class="nir-row card" id="nir-device-row">
+          <div class="nir-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="3" stroke="#5b3fa0" stroke-width="2" />
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="#5b3fa0" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <div>
+            <div class="nir-title">AgriSpectra-NIR (Simulated)</div>
+            <div class="nir-sub">Synthetic spectral data for development and demos</div>
+          </div>
+          <span class="pill badge-sim nir-badge" id="badge-sim" data-layout-allow-overlap="crossfade">SIMULATED</span>
+          <span class="pill badge-connected nir-badge" id="badge-connected" data-layout-allow-overlap="crossfade">CONNECTED</span>
+        </div>
+        <div id="nir-combined">
+          <svg class="nir-graph" viewBox="0 0 280 110">
+            <polyline
+              points="0,90 30,70 60,78 90,40 120,55 150,20 180,48 210,30 240,60 280,42"
+              fill="none"
+              stroke="#5b3fa0"
+              stroke-width="4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <div>
+            <div class="nir-combined-score" id="nir-combined-score">87</div>
+            <div class="nir-combined-label">Combined score &middot; NIR enhanced</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCENE 5 — Outro — 17-22s (scene-local 0-5s) -->
+      <section id="scene-outro" class="clip" data-start="17" data-duration="5" data-track-index="0">
+        <div class="wordmark-row" id="outro-wordmark">
+          <svg class="mark" width="64" height="64" viewBox="0 0 120 120">
+            <path
+              d="M60 8 C92 8 106 42 106 64 C106 92 86 112 60 112 C34 112 14 92 14 64 C14 42 28 8 60 8 Z"
+              fill="#0e6e5d"
+            />
+            <rect x="14" y="56" width="92" height="16" fill="#dceee9" />
+          </svg>
+          <div class="wordmark-text">AgriSpectra</div>
+        </div>
+        <div id="outro-line">The phone gives you a first layer.<br />NIR adds what the camera can't see.</div>
+        <div id="outro-footnote">
+          Preliminary screening — not a replacement for certified laboratory testing.
+        </div>
+      </section>
+
+      <!-- Audio -->
+      <audio
+        id="music-bed"
+        src="assets/music/happy-beats-business-moves-vol-9-by-ende-dot-app.mp3"
+        data-start="0"
+        data-duration="22"
+        data-track-index="5"
+        data-volume="0.2"
+        data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0},{"t":0.6,"v":0.2},{"t":19.4,"v":0.2},{"t":22,"v":0}]}]}'
+      ></audio>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // ---------- Scene 1: Hook (local 0-4s) ----------
+      tl.fromTo("#hook-mark", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.6, ease: "power2.out" }, 0.2);
+      tl.fromTo(
+        "#hook-headline",
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+        0.9,
+      );
+
+      // ---------- Scene 2: Capture & scan (local 0-4.5s -> global 4-8.5s) ----------
+      const S2 = 4;
+      tl.fromTo(
+        "#capture-frame",
+        { borderColor: "#8b968f" },
+        { borderColor: "#0e6e5d", duration: 0.5, ease: "power1.inOut" },
+        S2 + 0.3,
+      );
+      const seedOutlines = gsap.utils.toArray(".seed-outline");
+      seedOutlines.forEach((el, i) => {
+        tl.to(el, { opacity: 1, duration: 0.18, ease: "power1.out" }, S2 + 1.0 + i * 0.18);
+      });
+      tl.fromTo(
+        "#capture-caption",
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+        S2 + 0.5,
+      );
+
+      // ---------- Scene 3: Batch Result (local 0-5.5s -> global 8.5-14s) ----------
+      const S3 = 8.5;
+      tl.fromTo("#result-score", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, S3 + 0.3);
+      tl.fromTo(
+        "#result-confidence",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.4, ease: "power1.out" },
+        S3 + 0.6,
+      );
+      tl.fromTo("#result-sub", { opacity: 0 }, { opacity: 1, duration: 0.4 }, S3 + 0.8);
+      const classChips = gsap.utils.toArray(".class-chip");
+      classChips.forEach((el, i) => {
+        tl.fromTo(
+          el,
+          { opacity: 0, y: 10 },
+          { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+          S3 + 1.2 + i * 0.3,
+        );
+      });
+      const histBars = gsap.utils.toArray(".hist-bar");
+      histBars.forEach((el, i) => {
+        tl.fromTo(el, { scaleY: 0 }, { scaleY: 1, duration: 0.3, ease: "power1.out" }, S3 + 2.6 + i * 0.1);
+      });
+
+      // ---------- Scene 4: NIR fusion (local 0-3s -> global 14-17s) ----------
+      const S4 = 14;
+      tl.to("#badge-sim", { opacity: 0, duration: 0.3 }, S4 + 1.1);
+      tl.fromTo("#badge-connected", { opacity: 0 }, { opacity: 1, duration: 0.3 }, S4 + 1.1);
+      tl.fromTo(
+        "#nir-device-row",
+        { opacity: 1 },
+        { opacity: 0, duration: 0.4, ease: "power1.in" },
+        S4 + 1.7,
+      );
+      tl.fromTo(
+        "#nir-combined",
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+        S4 + 1.9,
+      );
+      tl.fromTo(
+        "#nir-combined-score",
+        { textContent: 83 },
+        {
+          textContent: 91,
+          duration: 0.6,
+          ease: "power1.out",
+          snap: { textContent: 1 },
+        },
+        S4 + 2.1,
+      );
+
+      // ---------- Scene 5: Outro (local 0-5s -> global 17-22s) ----------
+      const S5 = 17;
+      tl.fromTo(
+        "#outro-wordmark",
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+        S5 + 0.3,
+      );
+      tl.fromTo(
+        "#outro-line",
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+        S5 + 0.9,
+      );
+      tl.fromTo(
+        "#outro-footnote",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.5, ease: "power1.out" },
+        S5 + 1.5,
+      );
+
+      // Music fade-in/out is authored via the #music-bed data-automation volume lane.
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

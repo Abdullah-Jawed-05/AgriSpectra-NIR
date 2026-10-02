@@ -1,0 +1,1 @@
+AgriSpectra screens seed quality from a phone camera — segmenting and scoring every seed in a batch offline, no lab required. Connect the optional NIR spectroscope (today: simulated, honestly labeled) and the same app adds spectral information the camera alone can't see.
