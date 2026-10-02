@@ -1,0 +1,35 @@
+/* Phone mockup + AgriSpectra app UI (light theme, matching the Flutter app). */
+.phone {
+  position: absolute; width: 440px; height: 910px; border-radius: 68px;
+  background: linear-gradient(145deg, #3a3f3d, #121414 40%, #262a29);
+  padding: 13px;
+  box-shadow: 0 0 0 2px #4b514f inset, 0 60px 120px rgba(0,0,0,.65), 0 0 140px rgba(60,207,134,.10);
+}
+.phone .screen {
+  position: relative; width: 100%; height: 100%; border-radius: 56px; overflow: hidden; background: #f6f7f6;
+}
+.phone .island {
+  position: absolute; top: 14px; left: 50%; width: 120px; height: 34px; margin-left: -60px; border-radius: 20px; background: #000; z-index: 20;
+}
+.phone .status {
+  position: absolute; top: 18px; left: 34px; right: 34px; display: flex; justify-content: space-between; font-size: 16px; font-weight: 650; z-index: 19; color: #171e1b;
+}
+.app { position: absolute; inset: 0; color: #171e1b; font-family: 'Inter'; }
+.app .pad { position: absolute; left: 30px; right: 30px; }
+.app .crop { font-size: 15px; font-weight: 700; letter-spacing: .24em; color: #54615b; }
+.app .score { font-size: 112px; font-weight: 780; letter-spacing: -0.05em; line-height: 1; color: #171e1b; }
+.app .chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; font-size: 15px; font-weight: 600; border: 1px solid; margin: 0 6px 8px 0; }
+.app .chip b { font-size: 18px; font-weight: 750; }
+.chip.good { background: #e3f1e8; color: #1b7a4c; border-color: #a9d3b9; }
+.chip.dmg { background: #f4ecdb; color: #8a5d0b; border-color: #e0c995; }
+.chip.shr { background: #f6e3df; color: #b0401e; border-color: #e5b1a3; }
+.chip.imp { background: #ececec; color: #54615b; border-color: #d0d0d0; }
+.conf { display: inline-block; padding: 8px 14px; border-radius: 10px; background: #dcefe7; color: #0e6e5d; font-size: 16px; font-weight: 650; }
+.app .muted { color: #54615b; font-size: 16px; }
+.card { background: #fff; border: 1px solid #dde3df; border-radius: 18px; padding: 16px 18px; }
+.card .row { display: flex; justify-content: space-between; font-size: 15px; padding: 6px 0; color: #54615b; }
+.card .row b { color: #171e1b; font-weight: 700; }
+.germ { display: flex; align-items: baseline; gap: 10px; }
+.germ .pct { font-size: 46px; font-weight: 780; color: #1b7a4c; letter-spacing: -0.03em; }
+.bars { display: flex; align-items: flex-end; gap: 6px; height: 110px; }
+.bars div { flex: 1; background: #3a8f74; border-radius: 4px 4px 0 0; }
