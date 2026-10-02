@@ -68,6 +68,8 @@ AgriSpectra/
 │   ├── test/
 │   └── pubspec.yaml
 ├── ml/                          Python training repository (§17 below)
+├── trainer_app/                  offline desktop app (Flet) wrapping ml/: Sort Mode labelling,
+│                                  Train Mode pipeline runner + V1-vs-V0 dashboard, Promote to App
 ├── nir_protocol/                 BLE GATT protocol spec + example payloads
 ├── simulator/simulated_nir/       standalone Dart/Python reference of the simulator's data model
 ├── docs/                         this file + one doc per subsystem
@@ -187,6 +189,8 @@ collection" section.
 - [`DATASET_GUIDE.md`](DATASET_GUIDE.md) — labeling, splitting, versioning
 - [`VALIDATION.md`](VALIDATION.md) — known limitations, what's been tested
 - [`ROADMAP.md`](ROADMAP.md) — the table in §8, expanded
+- [`TRAINER_APP_BUILD_PROMPT.md`](TRAINER_APP_BUILD_PROMPT.md) — spec for the
+  Trainer desktop app (`trainer_app/`); its `README.md` has run/package steps
 
 ## 10. Risks and current environment constraints
 

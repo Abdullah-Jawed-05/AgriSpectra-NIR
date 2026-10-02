@@ -21,8 +21,10 @@ this roadmap doesn't restate a checklist that the code already shows.
 - **Next real work: preprocessing normalisation** (§8) — white-balance /
   exposure normalisation and scale-invariant geometry features, in both
   `app/lib/ml/` and `ml/preprocessing/` (parity). This has to land before
-  any "wire V1 into the app" step; V1 as-is would be worse than the V0
-  rule engine on real new photos.
+  flipping `useModelV1` on (the call site and the Trainer's
+  Promote → Copy → Enable-and-rebuild path now exist, off by default —
+  see [`ML_PIPELINE.md`](ML_PIPELINE.md)); V1 as-is would be worse than the
+  V0 rule engine on real new photos.
 - Only after that: retrain, re-run the cross-session test, and if it holds
   up, replace `RuleBasedClassifier` + `ImpurityDetector` as the default
   (keeping both as a §58 fallback).

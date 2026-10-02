@@ -96,6 +96,11 @@ broken fragments against that background.
 
 **What this means:**
 - **Do NOT wire V1 into the app.** Strictly worse than the V0 rule engine.
+  *(Update 2026-10-02: the call site now exists — `model_v1_predictor.dart`
+  — but `useModelV1` is a hardcoded `false`, and no model is promoted. This
+  finding stands for the model it was written about: the flag must stay off
+  until a new run beats V0 on held-out data from a different batch; the
+  Trainer's results dashboard now shows that V1-vs-V0 comparison.)*
 - The normalisation, drop-absolute-geometry, and `--one-seed` changes are
   all kept — correct regardless.
 - **The blocker is the capture background.** lot2's textured mat violates

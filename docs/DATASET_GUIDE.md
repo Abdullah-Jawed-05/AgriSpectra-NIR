@@ -40,11 +40,15 @@ is actually used, not as a separate mode:
   not entered by anyone: every day of app usage becomes its own collection
   batch automatically, which is what actually lets `split_dataset.py` do a
   real group split once enough days accumulate (see "What batch means"
-  above). Unzip the export straight into `ml/data/raw/barley/`.
+  above). Easiest: in the AgriSpectra Trainer's Sort screen, **Import phone
+  export (.zip)…** extracts it straight into the raw-data root.
+  Manually, unzip into `ml/data/raw/barley/`.
 - Exports are always the *complete* verified set, not just what's new — no
-  export-state tracking to get out of sync. Replace your local
-  `ml/data/raw/barley/` wholesale with each new export rather than
-  merging by hand.
+  export-state tracking to get out of sync. Re-importing overwrites only
+  the `app_<date>` batch folders in place. **Don't replace the whole
+  `raw/barley/` folder** with an export if you've also sorted photos by
+  hand or via the Trainer (those live in separate `batch_<date>` folders
+  that an export doesn't contain) — merge, never wholesale-replace.
 
 ## Scope: barley only (for now)
 

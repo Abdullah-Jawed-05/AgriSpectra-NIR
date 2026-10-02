@@ -28,9 +28,11 @@ actually runs when a user scans seeds — see
 (prepare → split → train → evaluate → export). Trains Model V1 (classical
 ML on the same features the Dart `FeatureExtractor` computes) and, later,
 Model V2 (CNN). A first Model V1 has now been trained on the barley
-dataset (results in [`VALIDATION.md`](VALIDATION.md)), but **nothing this
-pipeline produces is consumed by the app yet** — see "How V0 becomes V1"
-below for what's still needed before that's true.
+dataset (results in [`VALIDATION.md`](VALIDATION.md)), but **no trained
+model is active in the app** — the app-side call site exists but is gated
+off by default; see "How V0 becomes V1" below. The pipeline can also be
+driven from a GUI: `trainer_app/` (Sort → Train → Promote) wraps these
+scripts unmodified as subprocesses.
 
 ## 3. Python↔Dart feature parity (verified 2026-09-04)
 
@@ -204,18 +206,38 @@ a second real collection batch exists to evaluate against.
 
 When a real dataset exists and `ml/training/train_baseline.py` produces a
 validated model (`ml/evaluation/evaluate_model.py` results reviewed and
-recorded in [`VALIDATION.md`](VALIDATION.md)):
+recorded in [`VALIDATION.md`](VALIDATION.md)), the path to the phone is now
+mostly built — driven from the AgriSpectra Trainer (`trainer_app/`, spec in
+[`TRAINER_APP_BUILD_PROMPT.md`](TRAINER_APP_BUILD_PROMPT.md)):
 
-1. Export the trained model in a form the app can load (ONNX via
-   `ml/export/export_onnx.py`, or hand-port the decision logic if it's
-   small enough — TBD based on what V1 actually turns out to be).
-2. Add a Dart-side inference path in `app/lib/ml/` that implements the same
-   interface `RuleBasedClassifier.classify(SeedFeatures) -> QualityPrediction`
-   currently implements, so `ScanOrchestrator` swaps in the new classifier
-   with a one-line change.
-3. Keep `RuleBasedClassifier` in the codebase as a fallback for "model file
-   missing or corrupt" (§58 of the original build spec) rather than
-   deleting it.
-4. Bump `AppVersions.visionModelVersion`
-   (`app/lib/core/constants/app_constants.dart`) — every historical `Scan`
-   row keeps whatever version it was written with (§26).
+1. **Promote to App** converts `model.joblib` (LightGBM or RandomForest,
+   whichever `train_baseline.py` produced) into dependency-free Dart via
+   `m2cgen` — no ONNX/TFLite runtime needed for a classical model. It
+   writes `model_v1_generated.dart` + `agrispectra_model_v1_adapter.dart`
+   (which stamps `modelV1Available = true`). **Copy to app** drops them into
+   `app/lib/ml/`, replacing same-named placeholders.
+2. The call site already exists: `app/lib/ml/model_v1_predictor.dart`'s
+   `tryModelV1()`, wired into `vision_pipeline.dart` as
+   `tryModelV1(features) ?? classifier.classify(features)`. It flattens
+   `SeedFeatures` into the same flat keys `features.py::extract_all()`
+   trains on — keep those in sync.
+3. `RuleBasedClassifier` stays as the fallback (§58) and as the baseline:
+   `ml/evaluation/v0_baseline.py` re-runs the V0 rule on the same held-out
+   test set, so the Trainer's results dashboard shows V1-vs-V0 macro-F1
+   side by side. (The `dark_region_ratio > 0.22` rule now exists in three
+   places — `rule_classifier.dart`, `trainer_app/sort/suggest.py`,
+   `v0_baseline.py` — keep them in sync.)
+4. **`useModelV1` is a hardcoded `const bool = false`** in
+   `model_v1_predictor.dart`. Promoting/copying a model only makes it
+   *available*; flipping it (and rebuilding the APK) is the one deliberate
+   human step, taken only after the model beats V0 on held-out data from a
+   different collection batch. The Trainer's "Enable Model V1 & rebuild
+   APK" button mechanizes the edit + `flutter build apk` but shows the
+   comparison first and never runs on its own.
+5. Bump `AppVersions.visionModelVersion` /
+   `visionModelVersionV1` (`app/lib/core/constants/app_constants.dart`) —
+   every historical `Scan` row keeps whatever version it was written with
+   (§26).
+
+The ONNX/TFLite export scripts (`ml/export/`) remain for the future CNN
+(Model V2), not for this classical path.

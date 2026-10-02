@@ -45,7 +45,11 @@ hardware is additive, not a rewrite:
 fusion (Model V0 of fusion — see the class doc comment for why late fusion
 and why confidence-weighted, both traceable to specific build-spec
 sections). `app/lib/nir/nir_quality.dart` scores how much to trust a given
-NIR reading independent of what the vision pipeline found. Neither module
+NIR reading independent of what the vision pipeline found. Calibration
+validity is a *multiplicative* gate on that score (an expired/unknown
+calibration collapses the NIR arm's fusion weight to ~0.2×, per §71), not
+one term in a weighted sum, and a saturated (clipped) signal no longer
+counts as "strong". Neither module
 cares whether the reading came from the simulator or real hardware — the
 `SpectralMeasurement.isSimulated` flag exists for UI labeling, not for
 different fusion behavior.
