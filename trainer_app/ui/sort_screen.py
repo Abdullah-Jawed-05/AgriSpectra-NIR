@@ -11,7 +11,7 @@ import flet as ft
 from core import theme
 from sort.phone_import import import_phone_export
 from sort.session import SortSession, default_batch_id
-from ui.components import card, class_counts_row, section_title
+from ui.components import card, class_counts_row, file_picker, section_title
 
 MILESTONE_STEP = 40
 
@@ -184,12 +184,7 @@ class SortScreen:
     # ---- import ------------------------------------------------------
 
     async def _on_choose_folder(self, e) -> None:
-        picker = ft.FilePicker()
-        self.ctx.page.overlay.append(picker)
-        self.ctx.page.update()
-        path = await picker.get_directory_path(dialog_title="Choose a folder of raw seed photos")
-        self.ctx.page.overlay.remove(picker)
-        self.ctx.page.update()
+        path = await file_picker(self.ctx).get_directory_path(dialog_title="Choose a folder of raw seed photos")
         if not path:
             return
         self.ctx.page.run_thread(self._do_import, path)
@@ -230,12 +225,7 @@ class SortScreen:
         self._rebuild()
 
     async def _on_import_phone_export(self, e) -> None:
-        picker = ft.FilePicker()
-        self.ctx.page.overlay.append(picker)
-        self.ctx.page.update()
-        files = await picker.pick_files(dialog_title="Choose a phone export zip", allowed_extensions=["zip"])
-        self.ctx.page.overlay.remove(picker)
-        self.ctx.page.update()
+        files = await file_picker(self.ctx).pick_files(dialog_title="Choose a phone export zip", allowed_extensions=["zip"])
         if not files:
             return
         self.ctx.page.run_thread(self._do_import_phone_export, files[0].path)

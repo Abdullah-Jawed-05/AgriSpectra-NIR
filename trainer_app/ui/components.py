@@ -8,6 +8,24 @@ import flet as ft
 from core import theme
 
 
+def file_picker(ctx) -> ft.FilePicker:
+    """The app's single FilePicker, created on first use.
+
+    In Flet 1.0 FilePicker is a Service: constructing it registers it with
+    the current page (so call this from inside an event handler, where
+    `ft.context.page` is set). It must NOT also be added to `page.overlay`
+    -- the old pre-1.0 pattern -- or the desktop client never gets a method
+    listener and every call fails with "Timeout waiting for invoke method
+    listener" after 10s. Reused rather than constructed per click, since
+    each construction registers another service with the page.
+    """
+    picker = getattr(ctx, "_file_picker", None)
+    if picker is None:
+        picker = ft.FilePicker()
+        ctx._file_picker = picker
+    return picker
+
+
 def stat_tile(label: str, value: str, color: str = theme.ACCENT) -> ft.Container:
     return ft.Container(
         bgcolor=theme.SURFACE_ALT,

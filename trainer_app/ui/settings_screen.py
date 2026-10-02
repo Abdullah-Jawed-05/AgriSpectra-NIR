@@ -6,7 +6,7 @@ from __future__ import annotations
 import flet as ft
 
 from core import theme
-from ui.components import card, section_title
+from ui.components import card, file_picker, section_title
 
 
 class SettingsScreen:
@@ -22,11 +22,7 @@ class SettingsScreen:
 
     def _pick_folder(self, key: str) -> None:
         async def handler(_: ft.Event) -> None:
-            picker = ft.FilePicker()
-            self.ctx.page.overlay.append(picker)
-            self.ctx.page.update()
-            path = await picker.get_directory_path(dialog_title=f"Choose {key}")
-            self.ctx.page.overlay.remove(picker)
+            path = await file_picker(self.ctx).get_directory_path(dialog_title=f"Choose {key}")
             if path:
                 self.fields[key].value = path
                 self.ctx.page.update()
