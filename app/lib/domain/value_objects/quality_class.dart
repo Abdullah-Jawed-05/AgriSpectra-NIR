@@ -1,9 +1,10 @@
 /// Visual-quality classes for barley seeds (§15 of the build spec, scoped
 /// to the one crop AgriSpectra currently has a dataset for). These are
-/// observable classes derived from appearance only — they are NOT viability
-/// or germination labels. Do not rename these to imply biological status
-/// (e.g. "dead"/"alive") without an actual laboratory ground-truth dataset
-/// backing that claim (see docs/VALIDATION.md).
+/// observable classes derived from appearance. Each one has a measured
+/// growth-test germination rate (good ~75%, damaged 45%, broken 0%,
+/// shriveled 0%) held in `GerminationReference`; batch germination figures
+/// come from there, not from renaming these classes to imply biological
+/// status (e.g. "dead"/"alive").
 ///
 /// The four per-seed quality classes — [good], [damaged], [broken],
 /// [shriveled] — mirror the labelled folders of the barley reference set.

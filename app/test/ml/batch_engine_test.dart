@@ -58,4 +58,48 @@ void main() {
     expect(stats.purityRatio, 1.0);
     expect(stats.scoreHistogram, List.filled(10, 0));
   });
+
+  test('a batch of only broken and shriveled seeds scores 0 with 0 confidence and 0% germination', () {
+    final seeds = [
+      makeSeed(id: 'b1', score: 92, confidence: 0.9, qualityClass: QualityClass.broken),
+      makeSeed(id: 'b2', score: 88, confidence: 0.9, qualityClass: QualityClass.broken),
+      makeSeed(id: 's1', score: 75, confidence: 0.8, qualityClass: QualityClass.shriveled),
+    ];
+
+    final stats = engine.aggregate(seedsDetected: 3, accepted: seeds, seedsRejected: 0);
+
+    expect(stats.averageScore, 0);
+    expect(stats.confidence, 0);
+    expect(stats.expectedGermination, 0);
+    expect(stats.isNonViable, isTrue);
+    expect(stats.scoreHistogram[0], 3);
+  });
+
+  test('expected germination follows the growth-test rate of each class', () {
+    final seeds = [
+      for (var i = 0; i < 6; i++) makeSeed(id: 'g$i', qualityClass: QualityClass.good),
+      for (var i = 0; i < 2; i++) makeSeed(id: 'd$i', qualityClass: QualityClass.damaged),
+      makeSeed(id: 'b1', qualityClass: QualityClass.broken),
+      makeSeed(id: 's1', qualityClass: QualityClass.shriveled),
+      makeSeed(id: 'imp', qualityClass: QualityClass.impurities),
+    ];
+
+    final stats = engine.aggregate(seedsDetected: 11, accepted: seeds, seedsRejected: 0);
+
+    // (6 * 0.75 + 2 * 0.45 + 0 + 0) / 10 seeds; the impurity is not a seed.
+    expect(stats.expectedGermination, closeTo(0.54, 1e-9));
+    expect(stats.isNonViable, isFalse);
+    expect(stats.confidence, greaterThan(0));
+  });
+
+  test('broken and shriveled seeds count as 0 in a mixed batch average', () {
+    final seeds = [
+      makeSeed(id: 'g1', score: 90, qualityClass: QualityClass.good),
+      makeSeed(id: 'b1', score: 90, qualityClass: QualityClass.broken),
+    ];
+
+    final stats = engine.aggregate(seedsDetected: 2, accepted: seeds, seedsRejected: 0);
+
+    expect(stats.averageScore, 45);
+  });
 }
