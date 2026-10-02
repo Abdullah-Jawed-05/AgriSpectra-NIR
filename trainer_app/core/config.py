@@ -10,6 +10,7 @@ invent a new database").
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -41,7 +42,21 @@ def _discover_pipeline_dir() -> str:
 
 
 def _discover_python_exe() -> str:
-    return sys.executable
+    """Find a real, spawnable Python interpreter for Train Mode's
+    subprocess calls into ml/.
+
+    `sys.executable` is correct when running from source (`python
+    main.py`) — it IS a real interpreter. It is wrong when frozen
+    (PyInstaller/similar): it then points at this app's own bundled exe,
+    which isn't a general-purpose Python and can't run ml/'s scripts.
+    A packaged build deliberately requires the user's own Python already
+    installed (see trainer_app/README.md "Packaging") rather than
+    bundling a second one, so look for it on PATH instead; an empty
+    result shows as "not configured" in Settings, same as pipeline_dir.
+    """
+    if not getattr(sys, "frozen", False):
+        return sys.executable
+    return shutil.which("python") or shutil.which("python3") or ""
 
 
 def _discover_app_lib_ml_dir() -> str:
