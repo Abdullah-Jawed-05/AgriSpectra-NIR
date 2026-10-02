@@ -43,6 +43,29 @@ class FusionEngine {
       );
     }
 
+    // Every seed is in a class that never germinated in the growth test
+    // (all broken / shriveled): the NIR reading cannot lift that, and with
+    // the visual confidence at 0 the weighting below would otherwise hand
+    // the whole result to the NIR score.
+    if (visualStats.isNonViable) {
+      return FusionResult(
+        assessmentId: assessmentId,
+        mode: AssessmentMode.multimodal,
+        crop: crop,
+        visualScore: 0,
+        nirScore: _spectralQualityScore(spectral),
+        combinedScore: 0,
+        confidence: 0,
+        seedCount: visualStats.seedsAccepted,
+        anomalies: visualStats.anomalyCount,
+        modelVersions: const {
+          'vision': AppVersions.visionModelVersion,
+          'nir': AppVersions.nirModelVersion,
+          'fusion': AppVersions.fusionModelVersion,
+        },
+      );
+    }
+
     final nirQuality = const NirQualityScorer().score(spectral);
     final nirScore = _spectralQualityScore(spectral);
 

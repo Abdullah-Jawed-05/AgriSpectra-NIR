@@ -1,6 +1,7 @@
 import '../core/constants/app_constants.dart';
 import '../domain/entities/quality_prediction.dart';
 import '../domain/entities/seed_features.dart';
+import '../domain/value_objects/germination_reference.dart';
 import '../domain/value_objects/quality_class.dart';
 import 'agrispectra_model_v1_adapter.dart';
 
@@ -64,7 +65,9 @@ QualityPrediction predictionFromModelV1Result(ModelV1Prediction result) {
   final isGood = qualityClass == QualityClass.good;
   return QualityPrediction(
     qualityClass: qualityClass,
-    score: confidence * 100,
+    // A confident "broken" call must not read as a high quality score: classes
+    // that never germinated in the growth test score 0.
+    score: GerminationReference.isNonViable(qualityClass) ? 0 : confidence * 100,
     confidence: confidence,
     evidence: [
       EvidenceFactor(

@@ -9,6 +9,7 @@ BatchStatistics batchStats({
   int seedsAccepted = 12,
   int anomalyCount = 1,
   int impurityCount = 0,
+  Map<String, int>? qualityClassCounts,
 }) {
   return BatchStatistics(
     seedsDetected: seedsAccepted + impurityCount,
@@ -19,7 +20,7 @@ BatchStatistics batchStats({
     anomalyCount: anomalyCount,
     confidence: confidence,
     scoreHistogram: List<int>.filled(10, 0),
-    qualityClassCounts: {'GOOD': seedsAccepted},
+    qualityClassCounts: qualityClassCounts ?? {'GOOD': seedsAccepted},
     impurityCount: impurityCount,
     purityRatio: seedsAccepted / (seedsAccepted + impurityCount),
   );
