@@ -84,4 +84,20 @@ void main() {
     expect(r.seedCount, 21);
     expect(r.anomalies, 4);
   });
+
+  test('an all-broken/shriveled batch stays at 0 even with a strong NIR reading', () {
+    final r = engine.fuse(
+      crop: 'barley',
+      visualStats: batchStats(
+        averageScore: 0,
+        confidence: 0,
+        seedsAccepted: 4,
+        qualityClassCounts: {'BROKEN': 3, 'SHRIVELED': 1},
+      ),
+      spectral: spectral(reflectance: const [0.9, 0.9, 0.9, 0.9, 0.9, 0.9]),
+    );
+
+    expect(r.combinedScore, 0);
+    expect(r.confidence, 0);
+  });
 }

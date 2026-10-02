@@ -85,5 +85,13 @@ void main() {
       expect(prediction.confidence, 0.0);
       expect(prediction.score, 0.0);
     });
+
+    test('a confident broken or shriveled call scores 0 (never germinated in growth tests)', () {
+      for (final label in ['BROKEN', 'SHRIVELED']) {
+        final prediction = predictionFromModelV1Result(ModelV1Prediction(label, const [0.05, 0.9, 0.05]));
+        expect(prediction.score, 0, reason: label);
+        expect(prediction.confidence, closeTo(0.9, 1e-9), reason: label);
+      }
+    });
   });
 }

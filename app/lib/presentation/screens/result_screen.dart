@@ -314,6 +314,13 @@ class _BreakdownCard extends StatelessWidget {
               _Row(label: 'NIR enhancement', value: fusion.nirScore!.round().toString())
             else
               _Row(label: 'NIR enhancement', value: 'unavailable', muted: true),
+            _Row(
+              label: 'Expected germination',
+              value: stats.expectedGermination == null
+                  ? 'unavailable'
+                  : '${(stats.expectedGermination! * 100).round()}%',
+              muted: stats.expectedGermination == null,
+            ),
             _Row(label: 'Batch uniformity', value: '${(stats.uniformity * 100).round()}%'),
             _Row(label: 'Visible anomalies', value: '${stats.anomalyCount} seeds'),
             _Row(

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../domain/entities/batch_statistics.dart';
 import '../domain/entities/processed_seed.dart';
 import '../domain/value_objects/confidence_level.dart';
+import '../domain/value_objects/germination_reference.dart';
 import '../domain/value_objects/quality_class.dart';
 
 /// Aggregates per-seed predictions into batch-level statistics (§21).
@@ -13,6 +14,11 @@ import '../domain/value_objects/quality_class.dart';
 /// [BatchStatistics.purityRatio]). Every other statistic
 /// (score, uniformity, histogram, anomaly count, class counts) is computed
 /// over the seeds only.
+///
+/// Germination ground truth (see [GerminationReference]): no broken or
+/// shriveled barley seed germinated in the growth test, so a batch made up
+/// entirely of those classes is reported with a score of 0 and a confidence
+/// of 0, whatever the per-seed model said.
 class BatchEngine {
   const BatchEngine();
 
@@ -49,7 +55,12 @@ class BatchEngine {
       );
     }
 
-    final scores = seeds.map((s) => s.prediction!.score).toList();
+    // Seeds in a class that never germinated score 0, whichever model
+    // produced the prediction.
+    final scores = seeds
+        .map((s) => GerminationReference.isNonViable(s.prediction!.qualityClass) ? 0.0 : s.prediction!.score)
+        .toList();
+    final allNonViable = seeds.every((s) => GerminationReference.isNonViable(s.prediction!.qualityClass));
     final averageScore = scores.reduce((a, b) => a + b) / scores.length;
 
     final variance =
@@ -64,7 +75,8 @@ class BatchEngine {
     final anomalyCount = seeds.where((s) => s.prediction!.anomalies.isNotEmpty).length;
 
     final confidences = seeds.map((s) => s.prediction!.confidence).toList();
-    final avgConfidence = confidences.reduce((a, b) => a + b) / confidences.length;
+    final avgConfidence =
+        allNonViable ? 0.0 : confidences.reduce((a, b) => a + b) / confidences.length;
 
     final histogram = List<int>.filled(10, 0);
     for (final score in scores) {

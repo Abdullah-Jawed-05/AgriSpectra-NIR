@@ -1,3 +1,5 @@
+import '../value_objects/germination_reference.dart';
+
 /// Batch-level aggregation (§21) produced by the batch engine from a list
 /// of per-seed predictions.
 class BatchStatistics {
@@ -25,6 +27,16 @@ class BatchStatistics {
   /// 0..1. seeds / (seeds + impurities) — the fraction of detected objects
   /// that were actual seeds. 1.0 when nothing was detected.
   final double purityRatio;
+
+  /// 0..1 expected germination of the batch, from the barley growth-test
+  /// rate of each seed's quality class (see [GerminationReference]).
+  /// Derived from [qualityClassCounts], so older stored scans get it too.
+  /// `null` when no seed has a class with a measured rate.
+  double? get expectedGermination => GerminationReference.expectedRate(qualityClassCounts);
+
+  /// True when the batch has seeds and every one of them is in a class that
+  /// never germinated (all broken / shriveled).
+  bool get isNonViable => expectedGermination == 0.0;
 
   const BatchStatistics({
     required this.seedsDetected,
