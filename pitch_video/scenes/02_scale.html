@@ -1,0 +1,94 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>02 Scale</title>
+<link rel="stylesheet" href="../lib/base.css">
+<style>
+  #map { left: 150px; top: 70px; width: 860px; height: 860px; }
+  .stat { position: absolute; left: 1080px; width: 760px; }
+  .big { font-size: 168px; font-weight: 760; letter-spacing: -0.05em; line-height: .95; }
+  .lede { font-size: 34px; font-weight: 550; color: var(--text); letter-spacing: -0.01em; margin-top: 14px; line-height: 1.25; }
+  .lede span { color: var(--muted); font-weight: 450; }
+  #s1 { top: 150px; }
+  #s2 { top: 500px; }
+  #cap { left: 1080px; width: 760px; top: 850px; font-size: 46px; }
+  #src { left: 0; right: 0; bottom: 38px; text-align: center; }
+  .count { font-size: 30px; color: var(--green); font-weight: 650; margin-top: 18px; }
+</style></head>
+<body><div class="stage"></div>
+<svg id="map" class="abs" viewBox="0 0 900 900">
+  <path id="outline" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="1.5"/>
+  <g id="dots"></g>
+  <g id="rings"></g>
+</svg>
+<div class="stat" id="s1" style="opacity:0">
+  <div class="kicker">Pakistan · Agriculture</div>
+  <div class="big grad-green" style="margin-top:14px">1 in 3</div>
+  <div class="lede">workers earn their living from agriculture.</div>
+  <div class="count" id="cnt">0 million people</div>
+</div>
+<div class="stat" id="s2" style="opacity:0">
+  <div class="big grad-red">392</div>
+  <div class="lede">seed companies banned<br><span>for selling fake and substandard seed.</span></div>
+</div>
+<div id="cap" class="abs h2" style="opacity:0">One bad bag becomes<br>a national loss.</div>
+<div id="src" class="abs src">Labour Force Survey 2024–25, Pakistan Bureau of Statistics (33.1% of employed, 25.5M) · Seed-company bans as reported by SecuringIndustry.com</div>
+
+<script type="module">
+import { $, css, tw, env, reveal, ease, prog, clamp, rng, fmt, register } from '../lib/core.js';
+import { PAK_OUTLINE, PAK_DOTS } from '../lib/pakdots.js';
+const NS = 'http://www.w3.org/2000/svg';
+$('#outline').setAttribute('d', PAK_OUTLINE);
+
+const R = rng(11);
+const epic = [[520, 380], [700, 560], [360, 720], [610, 180]];
+const dots = PAK_DOTS.map(([x, y]) => {
+  const c = document.createElementNS(NS, 'circle');
+  c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', 5.2);
+  $('#dots').appendChild(c);
+  const d = Math.min(...epic.map(([ex, ey], i) => Math.hypot(x - ex, y - ey) / 520 + i * 0.35));
+  return { c, x, y, ag: R() < 0.331, appear: (y / 900) * 1.4 + R() * 0.35, lit: R() * 1.6, hit: d };
+});
+const rings = epic.map(([x, y]) => {
+  const c = document.createElementNS(NS, 'circle');
+  c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('fill', 'none'); c.setAttribute('stroke', '#ff5a4f');
+  $('#rings').appendChild(c);
+  return c;
+});
+
+const mix = (a, b, p) => a.map((v, i) => Math.round(v + (b[i] - v) * p));
+const GREY = [70, 78, 74], GREEN = [60, 207, 134], RED = [255, 90, 79], DRED = [120, 44, 40];
+
+function render(t) {
+  css('#outline', { opacity: tw(t, 0.2, 1.5) });
+  dots.forEach(d => {
+    const a = tw(t, 0.3 + d.appear, 0.6, ease.back);
+    const g = d.ag ? tw(t, 2.4 + d.lit, 0.5) : 0;
+    const r = tw(t, 10.6 + d.hit * 2.2, 0.6);
+    let col = mix(GREY, GREEN, g);
+    col = mix(col, d.ag ? RED : DRED, r);
+    d.c.setAttribute('fill', `rgb(${col})`);
+    d.c.setAttribute('r', (5.2 + (d.ag ? 0.8 * g : 0)) * a);
+  });
+  rings.forEach((c, i) => {
+    const p = prog(t, 10.6 + i * 0.35, 13.2 + i * 0.35);
+    c.setAttribute('r', 20 + p * 380);
+    c.setAttribute('stroke-opacity', p > 0 && p < 1 ? (1 - p) * 0.8 : 0);
+    c.setAttribute('stroke-width', 3);
+  });
+
+  reveal('#s1', t, 2.0);
+  const cp = tw(t, 2.6, 2.2, ease.out);
+  $('#cnt').textContent = `${(25.5 * cp).toFixed(1)} million people`;
+
+  // 392 slams in
+  const sp = tw(t, 6.4, 0.55, ease.out5);
+  css('#s2', { opacity: sp, transform: `scale(${1.35 - 0.35 * sp})`, transformOrigin: '0 50%', filter: sp < 1 ? `blur(${(1 - sp) * 10}px)` : 'none' });
+  // a short shake on impact
+  const sh = prog(t, 6.75, 7.1);
+  const amp = sh > 0 && sh < 1 ? Math.sin(sh * 40) * (1 - sh) * 8 : 0;
+  css('#map', { transform: `translateX(${amp}px)` });
+
+  reveal('#cap', t, 11.6);
+  css('#src', { opacity: 0.9 * tw(t, 3, 1) });
+}
+register(16, render);
+</script></body></html>

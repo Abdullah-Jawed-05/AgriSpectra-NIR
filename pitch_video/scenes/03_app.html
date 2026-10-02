@@ -1,0 +1,184 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>03 App</title>
+<link rel="stylesheet" href="../lib/base.css">
+<link rel="stylesheet" href="../lib/phone.css">
+<style>
+  #left { left: 150px; top: 250px; width: 720px; }
+  .bul { display: flex; align-items: center; gap: 22px; font-size: 38px; font-weight: 600; letter-spacing: -0.02em; margin-top: 30px; color: var(--text); }
+  .bul .n { width: 52px; height: 52px; border-radius: 26px; border: 2px solid var(--green); color: var(--green); display: grid; place-items: center; font-size: 22px; font-weight: 700; flex: none; }
+  #phoneWrap { left: 1150px; top: 85px; perspective: 1800px; }
+  .vf { position: absolute; inset: 0; background: #0d0f0e; }
+  .vf .paper { position: absolute; left: 34px; right: 34px; top: 150px; height: 560px; border-radius: 10px; background: linear-gradient(160deg, #f4f2ec, #e3e0d6); }
+  .vf .guide { position: absolute; left: 50px; right: 50px; top: 168px; height: 524px; border: 3px solid #2fbf78; border-radius: 14px; }
+  .vf .hint { position: absolute; left: 0; right: 0; top: 728px; text-align: center; color: #dfe5e2; font-size: 16px; font-weight: 550; }
+  .vf .shutter { position: absolute; left: 50%; bottom: 46px; width: 82px; height: 82px; margin-left: -41px; border-radius: 41px; border: 5px solid #fff; }
+  .vf .shutter::after { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: #fff; }
+  .vf .top { position: absolute; top: 70px; left: 0; right: 0; text-align: center; color: #fff; font-size: 17px; font-weight: 650; letter-spacing: .02em; }
+  #found { position: absolute; left: 50%; top: 100px; transform: translateX(-50%); background: #2fbf78; color: #fff; font-weight: 700; font-size: 16px; padding: 8px 16px; border-radius: 20px; white-space: nowrap; }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  #analyzing { position: absolute; inset: 0; background: #f6f7f6; display: grid; place-items: center; }
+  .ring { width: 74px; height: 74px; border-radius: 50%; border: 6px solid #dcefe7; border-top-color: #0e6e5d; }
+  #report { left: 560px; top: 150px; width: 560px; height: 790px; background: #fff; border-radius: 10px; box-shadow: 0 50px 100px rgba(0,0,0,.6); color: #171e1b; padding: 34px 36px; transform-origin: 100% 50%; }
+  #report .hd { display: flex; justify-content: space-between; align-items: flex-start; }
+  #report .brand { font-size: 30px; font-weight: 750; color: #0e6e5d; letter-spacing: -0.02em; }
+  #report .sub { font-size: 13px; color: #54615b; margin-top: 2px; }
+  #report .sum { margin-top: 20px; background: #dcefe7; border-radius: 10px; padding: 16px 18px; display: flex; align-items: flex-end; justify-content: space-between; }
+  #report .sum .n { font-size: 54px; font-weight: 780; color: #0e6e5d; letter-spacing: -0.03em; line-height: 1; }
+  #report .card { margin-top: 14px; border-radius: 8px; padding: 12px 14px; }
+  #report .card h4 { font-size: 13px; margin-bottom: 6px; }
+  #report .card .row { font-size: 12px; padding: 3px 0; }
+  #report .seeds { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
+  #report .seeds div { height: 44px; border-radius: 4px; background: radial-gradient(ellipse 40% 22% at 50% 50%, #c9a165 60%, transparent 64%), #f2f0ea; }
+  #report .foot { position: absolute; bottom: 18px; left: 36px; right: 36px; font-size: 10px; color: #8b968f; border-top: 1px solid #dde3df; padding-top: 6px; }
+</style></head>
+<body><div class="stage"></div>
+
+<div id="left" class="abs">
+  <div class="kicker" id="k">AgriSpectra AI</div>
+  <div class="h1" id="title" style="margin-top:18px">Seed quality,<br><span class="grad-green">from a photo.</span></div>
+  <div style="margin-top:40px">
+    <div class="bul" id="b1"><div class="n">1</div>Finds every seed</div>
+    <div class="bul" id="b2"><div class="n">2</div>Scores each one</div>
+    <div class="bul" id="b3"><div class="n">3</div>Builds a full batch report</div>
+  </div>
+  <div class="body" id="foot" style="margin-top:44px; font-size:24px">Non-destructive · From any smartphone camera<br>Scored against growth-tested reference seeds</div>
+</div>
+
+<div id="rlab" class="abs" style="left:150px;top:420px;width:380px;opacity:0"><div class="kicker">Batch report</div><div class="h3" style="margin-top:14px;font-size:46px;line-height:1.1">Shareable PDF.<br><span class="grad-green">On the spot.</span></div></div>
+<div id="report" class="abs" style="opacity:0">
+  <div class="hd">
+    <div><div class="brand">AgriSpectra</div><div class="sub">Seed Batch Assessment · BARLEY</div></div>
+    <div class="sub" style="text-align:right">Oct 2, 2026<br>42 objects detected</div>
+  </div>
+  <div class="sum"><div><span class="n">87</span> <span style="color:#54615b">/ 100</span></div><div style="text-align:right;font-size:13px"><b style="color:#0e6e5d">Confidence: High</b><br><span style="color:#54615b">40 seeds analyzed</span></div></div>
+  <div class="card"><h4>Batch breakdown</h4>
+    <div class="row">Visual quality<b>87</b></div><div class="row">Batch uniformity<b>91%</b></div><div class="row">Visible anomalies<b>6 seeds</b></div><div class="row">Batch purity<b>95%</b></div>
+  </div>
+  <div class="card"><h4>Expected germination</h4>
+    <div style="font-size:34px;font-weight:780;color:#1b7a4c">68%</div>
+    <div class="row">Good · 34<b>75%</b></div><div class="row">Damaged · 4<b>45%</b></div><div class="row">Shriveled · 2<b>0%</b></div>
+  </div>
+  <div class="seeds"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+  <div class="foot">Preliminary visual screening report.</div>
+</div>
+
+<div id="phoneWrap" class="abs">
+  <div class="phone" id="phone">
+    <div class="screen">
+      <div class="island"></div>
+      <!-- viewfinder -->
+      <div class="vf" id="vf">
+        <div class="top">Barley · Capture batch</div>
+        <div class="paper"></div>
+        <svg id="seeds" class="abs" style="left:0;top:0" width="414" height="884"></svg>
+        <div class="guide"></div>
+        <div class="hint" id="hint">Single layer, not touching.</div>
+        <div class="shutter"></div>
+        <div id="found" style="opacity:0">40 seeds · 2 impurities found</div>
+        <div id="flash"></div>
+      </div>
+      <div id="analyzing" style="opacity:0"><div style="text-align:center"><div class="ring" id="spin" style="margin:0 auto"></div><div class="muted" style="margin-top:22px;font-weight:600;color:#171e1b">Scoring 40 seeds…</div></div></div>
+      <!-- result -->
+      <div class="app" id="result" style="opacity:0">
+        <div class="status"><span>9:41</span><span>●●●</span></div>
+        <div class="pad" style="top:96px">
+          <div class="crop">BARLEY</div>
+          <div style="display:flex;align-items:flex-end;gap:14px;margin-top:6px"><div class="score" id="score">0</div><div class="conf" style="margin-bottom:14px">High confidence</div></div>
+          <div class="muted" style="margin-top:8px">40 seeds analyzed · Camera assessment</div>
+          <div style="margin-top:16px" id="chips">
+            <span class="chip good"><b>34</b>Good</span><span class="chip dmg"><b>4</b>Damaged</span><span class="chip shr"><b>2</b>Shriveled</span><span class="chip imp"><b>2</b>Impurities</span>
+          </div>
+          <div class="card" style="margin-top:10px">
+            <div class="muted" style="font-size:14px;font-weight:600;margin-bottom:10px;color:#171e1b">Score distribution</div>
+            <div class="bars" id="bars"></div>
+          </div>
+          <div class="card" style="margin-top:12px" id="germCard">
+            <div class="muted" style="font-size:14px;font-weight:600;color:#171e1b">Expected germination</div>
+            <div class="germ"><div class="pct" id="germ">0%</div><div class="muted" style="font-size:14px">from growth-tested classes</div></div>
+            <div class="row" style="margin-top:4px">Batch uniformity<b>91%</b></div>
+            <div class="row">Batch purity<b>95%</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { $, $$, css, tw, env, reveal, ease, prog, lerp, clamp, rng, register } from '../lib/core.js';
+const NS = 'http://www.w3.org/2000/svg';
+const R = rng(21);
+// 42 objects laid out in a jittered grid inside the guide (6 x 7)
+const objs = [];
+for (let r = 0; r < 7; r++) for (let c = 0; c < 6; c++) {
+  const x = 78 + c * 52 + (R() - .5) * 16, y = 200 + r * 70 + (R() - .5) * 18;
+  const i = objs.length;
+  const kind = [5, 17, 29, 38].includes(i) ? 'dmg' : [11, 33].includes(i) ? 'shr' : [22, 40].includes(i) ? 'imp' : 'good';
+  const g = document.createElementNS(NS, 'g');
+  g.setAttribute('transform', `translate(${x},${y}) rotate(${R() * 180})`);
+  const body = document.createElementNS(NS, 'ellipse');
+  const rx = kind === 'shr' ? 11 : kind === 'imp' ? 7 : 15, ry = kind === 'shr' ? 5 : kind === 'imp' ? 6 : 7;
+  body.setAttribute('rx', rx); body.setAttribute('ry', ry);
+  body.setAttribute('fill', kind === 'dmg' ? '#7a5a36' : kind === 'shr' ? '#a58658' : kind === 'imp' ? '#6d6a64' : '#c9a165');
+  g.appendChild(body);
+  const hl = document.createElementNS(NS, 'ellipse');
+  hl.setAttribute('rx', rx * .55); hl.setAttribute('ry', ry * .3); hl.setAttribute('cy', -ry * .3); hl.setAttribute('fill', '#fff'); hl.setAttribute('fill-opacity', kind === 'imp' ? .1 : .28);
+  g.appendChild(hl);
+  $('#seeds').appendChild(g);
+  const ring = document.createElementNS(NS, 'ellipse');
+  ring.setAttribute('cx', x); ring.setAttribute('cy', y); ring.setAttribute('fill', 'none'); ring.setAttribute('stroke-width', 2.5);
+  ring.setAttribute('stroke', kind === 'good' ? '#2fbf78' : kind === 'imp' ? '#9aa39f' : kind === 'dmg' ? '#f2ab3c' : '#ff5a4f');
+  $('#seeds').appendChild(ring);
+  objs.push({ g, ring, x, y, kind, d: Math.hypot(x - 207, y - 420) / 300 + R() * .25 });
+}
+const hist = [0, 0, 0, 1, 1, 2, 3, 6, 12, 15];
+hist.forEach(() => $('#bars').appendChild(document.createElement('div')));
+
+function render(t) {
+  reveal('#k', t, 0.3); reveal('#title', t, 0.5);
+  reveal('#b1', t, 4.6); reveal('#b2', t, 8.3); reveal('#b3', t, 12.6);
+  reveal('#foot', t, 14.6);
+  $$('.bul').forEach((b, i) => { const on = [4.6, 8.3, 12.6][i]; b.querySelector('.n').style.background = t > on + .4 ? 'rgba(60,207,134,.15)' : 'transparent'; });
+
+  // phone entrance + gentle float
+  const pin = tw(t, 0.2, 1.6, ease.out5);
+  const ry = lerp(-24, -9, pin) + Math.sin(t * .5) * 2;
+  css('#phone', { transform: `translateY(${(1 - pin) * 120 + Math.sin(t * .8) * 6}px) rotateY(${ry}deg) rotateX(3deg)`, opacity: pin });
+
+  // capture: seeds appear, shutter flash at 4.3
+  objs.forEach(o => {
+    o.g.setAttribute('opacity', tw(t, 0.9 + o.d * 1.2, .4));
+    const rp = tw(t, 4.9 + o.d * 1.5, .45, ease.back);
+    const s = o.kind === 'imp' ? 12 : 22;
+    o.ring.setAttribute('rx', s * (1.6 - .6 * rp)); o.ring.setAttribute('ry', s * .72 * (1.6 - .6 * rp));
+    o.ring.setAttribute('opacity', rp);
+  });
+  css('#flash', { opacity: env(t, 4.3, 4.45, .08, .5) * .9 });
+  css('#hint', { opacity: 1 - tw(t, 4.3, .4) });
+  css('#found', { opacity: tw(t, 6.6, .5), transform: `translateX(-50%) translateY(${(1 - tw(t, 6.6, .5)) * 10}px)` });
+
+  // analyzing 8.0 → 9.6
+  const an = env(t, 8.0, 9.4, .35, .4);
+  css('#analyzing', { opacity: an });
+  css('#spin', { transform: `rotate(${t * 360}deg)` });
+
+  // result
+  const ro = tw(t, 9.4, .5);
+  css('#result', { opacity: ro });
+  css('#vf', { opacity: 1 - tw(t, 8.0, .35) });
+  $('#score').textContent = Math.round(87 * tw(t, 9.6, 1.4, ease.out));
+  $$('#bars div').forEach((b, i) => { b.style.height = (hist[i] / 15) * 100 * tw(t, 10.2 + i * .07, .8, ease.out5) + '%'; });
+  $$('#chips .chip').forEach((c, i) => { const p = tw(t, 10.0 + i * .12, .5, ease.back); c.style.opacity = p; c.style.transform = `scale(${.8 + .2 * p})`; });
+  $('#germ').textContent = Math.round(68 * tw(t, 11.2, 1.2)) + '%';
+  const gc = tw(t, 11.0, .6, ease.out5);
+  css('#germCard', { opacity: gc, transform: `translateY(${(1 - gc) * 20}px)`, boxShadow: `0 0 0 ${3 * env(t, 11.2, 12.6)}px rgba(47,191,120,.45)` });
+
+  // report slides out from behind the phone
+  const rp = tw(t, 13.0, 1.4, ease.out5);
+  css('#report', { opacity: clamp(rp * 3), transform: `translateX(${(1 - rp) * 420}px) rotate(${-4 * rp}deg) scale(${.85 + .15 * rp})` });
+  reveal('#rlab', t, 14.2);
+  // left text yields to the report
+  css('#left', { opacity: 1 - tw(t, 13.0, .8), transform: `translateX(${-40 * tw(t, 13.0, 1.2)}px)` });
+}
+register(19, render);
+</script></body></html>

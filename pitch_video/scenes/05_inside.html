@@ -1,0 +1,165 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>05 Inside</title>
+<link rel="stylesheet" href="../lib/base.css">
+<style>
+  canvas { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  .cap { position: absolute; left: 0; right: 0; text-align: center; }
+  #brk { left: 460px; top: 250px; width: 1000px; height: 580px; }
+  #brkLab { left: 470px; top: 205px; font-size: 18px; font-weight: 650; letter-spacing: .24em; color: #cfd6d2; }
+  #rec { display: inline-block; width: 12px; height: 12px; border-radius: 6px; background: #ff5a4f; margin-right: 10px; vertical-align: 1px; }
+  #black { position: absolute; inset: 0; background: #000; opacity: 0; }
+  #title { left: 0; right: 0; top: 84px; text-align: center; }
+  #title .h1 { font-size: 118px; }
+  .tagL { position: absolute; font-size: 22px; font-weight: 600; color: #f5f5f7; white-space: nowrap; }
+  .tagL::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 5px; margin-right: 10px; vertical-align: 2px; background: currentColor; }
+</style></head>
+<body><div class="stage" id="bg"></div>
+<canvas id="c"></canvas>
+<svg id="brk" class="abs" viewBox="0 0 1000 580" style="opacity:0">
+  <g stroke="#f5f5f7" stroke-width="4" fill="none" stroke-linecap="round">
+    <path d="M0,70 V0 H70"/><path d="M930,0 H1000 V70"/><path d="M0,510 V580 H70"/><path d="M930,580 H1000 V510"/>
+  </g>
+</svg>
+<div id="brkLab" class="abs" style="opacity:0"><span id="rec"></span>CAMERA VIEW · SURFACE ONLY</div>
+<div class="cap h2" id="c1" style="top:860px">Perfect on the outside.</div>
+<div class="cap h2" id="c2" style="top:860px"><span class="grad-red">Dead on the inside.</span></div>
+<div class="tagL" id="tEmb" style="opacity:0;color:#ff7a6e">Embryo degraded</div>
+<div class="tagL" id="tMoist" style="opacity:0;color:#7fb2ff">Moisture damage</div>
+<div id="black"></div>
+<div id="title" class="abs" style="opacity:0">
+  <div class="kicker" style="color:var(--green)">Introducing</div>
+  <div class="h1 grad-silver" style="margin-top:14px">AgriSpectra NIR</div>
+</div>
+
+<script type="module">
+import { THREE, makeRenderer, studio, buildDevice, blobShadow, loadFonts, toScreen } from '../lib/device.js';
+import { $, css, tw, env, reveal, ease, prog, lerp, clamp, rng, register } from '../lib/core.js';
+await loadFonts();
+const renderer = makeRenderer($('#c'), { alpha: true });
+
+// ---------------- seed scene
+const sScene = new THREE.Scene();
+const key = new THREE.DirectionalLight(0xfff0d8, 3.0); key.position.set(-3, 5, 6); sScene.add(key);
+const rim = new THREE.DirectionalLight(0x9fd8ff, 2.6); rim.position.set(4, 3, -5); sScene.add(rim);
+sScene.add(new THREE.AmbientLight(0xffffff, 0.25));
+const pm = new THREE.PMREMGenerator(renderer);
+const { RoomEnvironment } = await import('../lib/RoomEnvironment.js');
+sScene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; sScene.environmentIntensity = 0.3;
+
+const huskTex = (() => {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, 512); gr.addColorStop(0, '#b98a4a'); gr.addColorStop(.5, '#e2bd7c'); gr.addColorStop(1, '#b98a4a');
+  g.fillStyle = gr; g.fillRect(0, 0, 1024, 512);
+  const R = rng(3);
+  for (let i = 0; i < 70; i++) { const x = R() * 1024; g.strokeStyle = `rgba(${R() < .5 ? '120,80,35' : '250,225,170'},${.15 + R() * .25})`; g.lineWidth = 1 + R() * 3; g.beginPath(); g.moveTo(x, 0); g.bezierCurveTo(x + 10, 170, x - 10, 340, x + 4, 512); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+function seedGeo(scale = 1) {
+  const pts = [];
+  for (let i = 0; i <= 64; i++) {
+    const y = -1 + 2 * i / 64;
+    const r = 0.42 * Math.pow(Math.max(0, 1 - y * y), 0.62) * (1 + 0.08 * y);
+    pts.push(new THREE.Vector2(Math.max(r, 0.0005) * scale, y * scale * 1.0));
+  }
+  const g = new THREE.LatheGeometry(pts, 96);
+  g.rotateZ(Math.PI / 2); g.scale(1.25, 1, 0.82);
+  return g;
+}
+const seed = new THREE.Group(); sScene.add(seed);
+const planeX = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
+const planeZ = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+const huskMat = new THREE.MeshStandardMaterial({ map: huskTex, bumpMap: huskTex, bumpScale: 1.2, roughness: 0.55, side: THREE.DoubleSide, clippingPlanes: [planeX, planeZ], clipIntersection: true });
+const husk = new THREE.Mesh(seedGeo(1), huskMat); seed.add(husk);
+const kernelMat = new THREE.MeshStandardMaterial({ color: 0xf1e6cf, roughness: 0.75 });
+const kernel = new THREE.Mesh(seedGeo(0.9), kernelMat); seed.add(kernel);
+const embMat = new THREE.MeshStandardMaterial({ color: 0xe9c35a, roughness: 0.5, emissive: 0x000000 });
+const emb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 32, 20), embMat); emb.scale.set(1.3, 0.85, 0.7); emb.position.set(-0.85, -0.04, 0.04); seed.add(emb);
+// decay + moisture spots that grow on the kernel
+const spots = [];
+const RS = rng(17);
+for (let i = 0; i < 26; i++) {
+  const moist = i % 3 === 0;
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.06 + RS() * 0.07, 16, 12), new THREE.MeshStandardMaterial({ color: moist ? 0x5b7a9a : 0x3b2516, roughness: moist ? 0.2 : 0.9, transparent: true, opacity: moist ? 0.75 : 0.95 }));
+  const x = -1.0 + RS() * 2.0, a = (RS() - .5) * 2.2;
+  const rr = 0.42 * 0.9 * Math.pow(Math.max(0, 1 - (x / 1.125) ** 2), 0.62);
+  m.position.set(x, Math.sin(a) * rr * 0.9, Math.cos(a) * rr * 0.75);
+  m.scale.set(1.5, 1, 0.5);
+  m.userData.d = Math.abs(x + 0.85) / 2.1 + RS() * 0.25;
+  seed.add(m); spots.push(m);
+}
+// glowing scan slice
+const scan = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), new THREE.MeshBasicMaterial({ color: 0x5dffa8, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+scan.rotation.y = Math.PI / 2; seed.add(scan);
+const scanEdge = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.012, 8, 64), new THREE.MeshBasicMaterial({ color: 0x8fffc4 }));
+scanEdge.rotation.y = Math.PI / 2; seed.add(scanEdge);
+const sCam = new THREE.PerspectiveCamera(26, 16 / 9, 0.1, 100);
+
+// ---------------- device scene
+const dScene = new THREE.Scene();
+const L = studio(dScene, renderer);
+const { root, P, M } = buildDevice(); dScene.add(root);
+const shadow = blobShadow(18, 13, 0.85); shadow.position.y = -0.05; dScene.add(shadow);
+const dCam = new THREE.PerspectiveCamera(28, 16 / 9, 0.1, 200);
+
+const kHealthy = new THREE.Color(0xf1e6cf), kSick = new THREE.Color(0xb59a78);
+const eHealthy = new THREE.Color(0xe9c35a), eSick = new THREE.Color(0x2b1a10);
+
+function render(t) {
+  const deviceT = t >= 8.7;
+  if (!deviceT) {
+    // slow macro turn
+    seed.rotation.set(0.25 + Math.sin(t * .3) * .05, -0.35 + t * 0.045, -0.1);
+    seed.position.set(0, 0, 0);
+    const push = tw(t, 0, 8.5, ease.inOut);
+    sCam.position.set(0, 0.35, lerp(6.6, 5.4, push)); sCam.lookAt(0, 0, 0);
+    seed.updateMatrixWorld(true);
+
+    // cutaway sweeps along the length from 4.6s
+    const cp = tw(t, 4.6, 2.0, ease.inOut);
+    const sx = lerp(-1.4, 1.4, cp);
+    planeX.set(new THREE.Vector3(1, 0, 0), -sx).applyMatrix4(seed.matrixWorld);
+    planeZ.set(new THREE.Vector3(0, 0, -1), 0.02).applyMatrix4(seed.matrixWorld);
+    scan.position.x = sx; scanEdge.position.x = sx;
+    const so = env(t, 4.5, 6.6, .3, .4);
+    scan.material.opacity = 0.28 * so; scanEdge.visible = so > 0.02; scanEdge.material.color.setRGB(.56 * so + .0, so, .77 * so);
+
+    // decay on the inside only (the husk stays perfect)
+    const dp = tw(t, 5.6, 2.6, ease.inOut);
+    kernelMat.color.copy(kHealthy).lerp(kSick, dp * 0.7);
+    embMat.color.copy(eHealthy).lerp(eSick, dp);
+    spots.forEach(s => { const p = tw(t, 5.6 + s.userData.d * 1.8, 0.9, ease.out); s.visible = p > 0.01; s.scale.set(1.5 * p, p, 0.5 * p); });
+
+    renderer.render(sScene, sCam);
+
+    css('#brk', { opacity: env(t, 0.4, 4.3, .5, .4), transform: `scale(${1.04 - .04 * tw(t, 0.4, .8)})` });
+    css('#brkLab', { opacity: env(t, 0.6, 4.3, .5, .4) });
+    css('#rec', { opacity: 0.4 + 0.6 * (Math.sin(t * 6) > 0 ? 1 : 0) });
+    reveal('#c1', t, 2.4, 5.2);
+    reveal('#c2', t, 6.0, 8.3);
+
+    const ep = toScreen(new THREE.Vector3(-0.85, -0.04, 0.04).applyMatrix4(seed.matrixWorld), sCam);
+    css('#tEmb', { left: (ep.x - 300) + 'px', top: (ep.y + 110) + 'px', opacity: env(t, 6.6, 8.2, .5, .3) });
+    const mp = toScreen(new THREE.Vector3(0.5, 0.2, 0.25).applyMatrix4(seed.matrixWorld), sCam);
+    css('#tMoist', { left: (mp.x + 60) + 'px', top: (mp.y - 170) + 'px', opacity: env(t, 7.0, 8.2, .5, .3) });
+  } else {
+    // hard cut to black, then the device rises out of the dark
+    const rp = tw(t, 9.2, 2.6, ease.out5);
+    root.position.y = lerp(-7, 0, rp);
+    root.rotation.y = lerp(-0.9, -0.55, tw(t, 9.2, 4.6, ease.out));
+    shadow.material.opacity = rp;
+    const lit = tw(t, 9.4, 2.0);
+    L.key.intensity = 2.4 * lit; L.rim.intensity = 2.2 * (0.25 + 0.75 * lit); L.fill.intensity = 0.5 * lit;
+    dScene.environmentIntensity = 0.35 * lit;
+    M.ledGreen.emissiveIntensity = t > 11.2 ? 2.5 + 1.5 * Math.sin((t - 11.2) * 3.2) : 0;
+    dCam.position.set(11, 8.5, 33); dCam.lookAt(0, 5.2, 0);
+    renderer.render(dScene, dCam);
+    ['#brk', '#brkLab', '#tEmb', '#tMoist'].forEach(s => css(s, { opacity: 0 }));
+    css('#c1', { opacity: 0 }); css('#c2', { opacity: 0 });
+    reveal('#title', t, 11.4);
+  }
+  // the beat of black between the two halves
+  css('#black', { opacity: t >= 8.5 && t < 9.2 ? 1 : t >= 9.2 ? 1 - tw(t, 9.2, .4) : 0 });
+  css('#bg', { opacity: deviceT ? tw(t, 9.6, 1.6) : 1 });
+}
+register(14, render);
+</script></body></html>

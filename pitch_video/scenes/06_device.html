@@ -1,0 +1,290 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>06 Device</title>
+<link rel="stylesheet" href="../lib/base.css">
+<link rel="stylesheet" href="../lib/phone.css">
+<style>
+  canvas { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  #lines { left: 0; top: 0; width: 1920px; height: 1080px; }
+  .lab { position: absolute; width: 330px; font-size: 24px; font-weight: 650; letter-spacing: -0.01em; color: var(--text); line-height: 1.2; }
+  .lab span { display: block; font-size: 18px; font-weight: 500; color: var(--muted); margin-top: 3px; }
+  .lab.r { text-align: left; } .lab.l { text-align: right; }
+  #panel { left: 960px; top: 0; width: 880px; height: 1080px; }
+  #panel .kicker { position: absolute; top: 120px; left: 0; color: var(--nir); }
+  #ptitle { position: absolute; top: 160px; left: 0; font-size: 58px; }
+  #schem { position: absolute; left: 0; top: 270px; width: 760px; height: 250px; }
+  #spec { position: absolute; left: 0; top: 520px; width: 820px; height: 330px; }
+  .chips { position: absolute; left: 0; top: 880px; width: 860px; display: flex; flex-wrap: wrap; gap: 12px; }
+  .pchip { padding: 12px 20px; border-radius: 30px; border: 1.5px solid rgba(155,124,255,.5); background: rgba(155,124,255,.10); font-size: 22px; font-weight: 600; color: #e6deff; }
+  #refPanel { left: 960px; top: 0; width: 880px; height: 1080px; }
+  #refPanel .kicker { position: absolute; top: 150px; left: 0; color: var(--green); }
+  #reftitle { position: absolute; top: 190px; left: 0; font-size: 54px; }
+  #refchart { position: absolute; left: 0; top: 330px; width: 820px; height: 380px; }
+  #verdict { position: absolute; left: 0; top: 760px; }
+  #verdict .num { font-size: 120px; font-weight: 760; letter-spacing: -0.045em; line-height: 1; }
+  .leg { position: absolute; font-size: 20px; font-weight: 600; white-space: nowrap; }
+  #phoneWrap { left: 1240px; top: 85px; perspective: 1800px; }
+  #ble { left: 0; top: 0; width: 1920px; height: 1080px; }
+  #words { left: 0; right: 0; top: 860px; text-align: center; }
+  #words span { display: inline-block; margin: 0 22px; font-size: 64px; font-weight: 700; letter-spacing: -0.03em; }
+  #specs { left: 0; right: 0; top: 960px; text-align: center; font-size: 24px; color: var(--muted); letter-spacing: .02em; }
+</style></head>
+<body><div class="stage"></div>
+<canvas id="c"></canvas>
+<svg id="lines" class="abs"></svg>
+<div id="labs"></div>
+
+<div id="panel" class="abs" style="opacity:0">
+  <div class="kicker">18-channel near-infrared spectroscopy</div>
+  <div id="ptitle" class="h2">Light in. <span style="color:#c9b8ff">Fingerprint out.</span></div>
+  <svg id="schem" viewBox="0 0 760 250">
+    <defs>
+      <linearGradient id="beam" x1="0" x2="1"><stop offset="0" stop-color="#fff6dc" stop-opacity=".9"/><stop offset="1" stop-color="#fff6dc" stop-opacity=".15"/></linearGradient>
+      <radialGradient id="ledGlow"><stop offset="0" stop-color="#fffbe8"/><stop offset=".4" stop-color="#ffe9a8" stop-opacity=".6"/><stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect x="40" y="10" width="140" height="44" rx="10" fill="#2a2d2c"/><circle cx="110" cy="54" r="40" fill="url(#ledGlow)" id="ledg"/><rect x="92" y="44" width="36" height="12" rx="3" fill="#fff"/>
+    <text x="110" y="-10" text-anchor="middle" font-family="Inter" font-size="20" font-weight="600" fill="#8d9591">White LED</text>
+    <rect x="560" y="10" width="160" height="44" rx="10" fill="#0f5a32"/><rect x="618" y="40" width="44" height="16" rx="3" fill="#d9b25a"/>
+    <text x="640" y="-10" text-anchor="middle" font-family="Inter" font-size="20" font-weight="600" fill="#8d9591">AS7265x sensor</text>
+    <path id="b1" d="M110,58 L375,200" stroke="url(#beam)" stroke-width="6" stroke-linecap="round" fill="none" stroke-dasharray="320" stroke-dashoffset="320"/>
+    <path id="b2" d="M385,200 L640,58" stroke="#b9a4ff" stroke-width="6" stroke-linecap="round" fill="none" stroke-dasharray="320" stroke-dashoffset="320"/>
+    <g transform="translate(380,214)"><ellipse rx="70" ry="22" fill="#c9a165"/><ellipse rx="40" ry="7" cy="-7" fill="#fff" fill-opacity=".3"/></g>
+    <text x="380" y="262" text-anchor="middle" font-family="Inter" font-size="20" font-weight="600" fill="#8d9591">Seed sample</text>
+    <g id="photons"></g>
+  </svg>
+  <svg id="spec" viewBox="0 0 820 330"><g id="bars"></g><g id="axis"></g></svg>
+  <div class="chips" id="pchips">
+    <div class="pchip">Moisture content</div><div class="pchip">Pigment difference</div><div class="pchip">Lipid &amp; protein variation</div><div class="pchip">Degradation</div>
+  </div>
+</div>
+
+<div id="refPanel" class="abs" style="opacity:0">
+  <div class="kicker">Compared with growth-tested references</div>
+  <div id="reftitle" class="h2">Does it grow?</div>
+  <svg id="refchart" viewBox="0 0 820 380"><g id="refs"></g></svg>
+  <div id="verdict"><div class="small" style="font-size:22px;letter-spacing:.2em;text-transform:uppercase;font-weight:600">Estimated germination viability</div><div class="num grad-green" id="vnum">0%</div></div>
+</div>
+
+<svg id="ble" class="abs"><g id="rings"></g></svg>
+<div id="phoneWrap" class="abs" style="opacity:0">
+  <div class="phone" id="phone"><div class="screen"><div class="island"></div>
+    <div class="app">
+      <div class="status"><span>9:41</span><span>●●●</span></div>
+      <div class="pad" style="top:96px">
+        <div style="display:flex;align-items:center;gap:10px;font-size:15px;font-weight:650;color:#5b3fa0;background:#eae4f6;padding:10px 14px;border-radius:12px"><svg width="14" height="20" viewBox="0 0 14 20"><path d="M2,5 L11,14 L6.5,18 V2 L11,6 L2,15" fill="none" stroke="#5b3fa0" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg> AgriSpectra NIR · Connected</div>
+        <div class="crop" style="margin-top:22px">BARLEY</div>
+        <div style="display:flex;align-items:flex-end;gap:14px;margin-top:6px"><div class="score" id="pscore">0</div><div class="conf" style="margin-bottom:14px">High confidence</div></div>
+        <div class="muted" style="margin-top:8px">Combined score · NIR enhanced</div>
+        <div class="card" style="margin-top:16px">
+          <div class="muted" style="font-size:14px;font-weight:600;color:#171e1b;margin-bottom:8px">NIR spectral reading</div>
+          <svg viewBox="0 0 320 90" width="100%" height="90"><path id="pline" d="" fill="none" stroke="#5b3fa0" stroke-width="3" stroke-linecap="round"/></svg>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="muted" style="font-size:14px;font-weight:600;color:#171e1b">Expected germination</div>
+          <div class="germ"><div class="pct" id="pgerm">0%</div><div class="muted" style="font-size:14px">camera + NIR</div></div>
+          <div class="row" style="margin-top:4px">Visual quality<b>87</b></div>
+          <div class="row">NIR enhancement<b>94</b></div>
+        </div>
+        <div style="margin-top:16px;background:#0e6e5d;color:#fff;border-radius:16px;padding:16px;text-align:center;font-weight:650;font-size:17px">Save report</div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div id="words" class="abs"><span id="w1">One button.</span><span id="w2">No screen.</span><span id="w3" class="grad-green">Fits in your hand.</span></div>
+<div id="specs" class="abs" style="opacity:0">110 × 80 × 75 mm · ~210 g · 18650 Li-ion · USB-C · Bluetooth LE / Wi-Fi</div>
+
+<script type="module">
+import { THREE, makeRenderer, studio, buildDevice, setExplode, blobShadow, loadFonts, toScreen } from '../lib/device.js';
+import { $, $$, css, tw, env, reveal, ease, prog, lerp, clamp, rng, register } from '../lib/core.js';
+await loadFonts();
+const NS = 'http://www.w3.org/2000/svg';
+const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+
+const renderer = makeRenderer($('#c'), { alpha: true });
+const scene = new THREE.Scene();
+const L = studio(scene, renderer);
+const { root, P, M } = buildDevice(); scene.add(root);
+const shadow = blobShadow(18, 13, 0.85); shadow.position.y = -0.05; scene.add(shadow);
+const cam = new THREE.PerspectiveCamera(28, 16 / 9, 0.1, 300);
+M.ledGreen.emissiveIntensity = 2.5;
+
+// ---------- explode labels
+const labels = [
+  { part: 'top', at: [0, 7.3, -1.5], side: 'l', t: 'Top cover', s: 'Single-button control' },
+  { part: 'pcb', at: [-3.0, 5.9, -0.85], side: 'l', t: 'ESP32', s: 'Bluetooth LE / Wi-Fi' },
+  { part: 'pcb', at: [0.4, 5.8, 1.3], side: 'r', t: 'TP4056 + 3.3 V LDO', s: 'USB-C charging, stable power' },
+  { part: 'battery', at: [-3.4, 4.6, -2.0], side: 'l', t: '18650 Li-ion', s: 'Long field battery life' },
+  { part: 'optics', at: [2.5, 5.35, 0.6], side: 'r', t: 'White LED', s: 'Uniform, diffuse illumination' },
+  { part: 'optics', at: [3.9, 5.35, 0.6], side: 'r', t: 'AS7265x Triad', s: '18 channels, 410–940 nm' },
+  { part: 'drawer', at: [3.1, 1.9, 0.4], side: 'r', t: 'Sample tray', s: '35 mm petri dish' },
+  { part: 'drawer', at: [5.9, 2.6, 0.25], side: 'r', t: 'Sliding drawer', s: 'Light-tight seal' },
+];
+labels.forEach((l, i) => {
+  l.el = document.createElement('div'); l.el.className = 'lab ' + l.side; l.el.innerHTML = `${l.t}<span>${l.s}</span>`; $('#labs').appendChild(l.el);
+  l.line = mk('polyline', { fill: 'none', stroke: 'rgba(255,255,255,.55)', 'stroke-width': 1.5 }, $('#lines'));
+  l.dot = mk('circle', { r: 5, fill: '#fff' }, $('#lines'));
+  l.v = new THREE.Vector3();
+});
+
+// ---------- spectrum
+const WL = [410, 435, 460, 485, 510, 535, 560, 585, 610, 645, 680, 705, 730, 760, 810, 860, 900, 940];
+const meas = [.16, .18, .2, .23, .27, .31, .36, .4, .44, .49, .52, .55, .6, .66, .7, .72, .7, .6];
+function wlColor(w) {
+  if (w >= 700) return `hsl(${265 - (w - 700) * 0.08}, 70%, ${68 - (w - 700) * .03}%)`;
+  const h = w < 440 ? 270 : w < 490 ? 270 - (w - 440) * 1.9 : w < 580 ? 175 - (w - 490) * 1.25 : w < 645 ? 62 - (w - 580) * 0.95 : 0;
+  return `hsl(${h}, 85%, 58%)`;
+}
+const SX = 40, SW = 760, SH = 250, SB = 280;
+const bw = SW / 18;
+const barEls = WL.map((w, i) => {
+  const r = mk('rect', { x: SX + i * bw + 4, width: bw - 8, rx: 4, fill: wlColor(w), y: SB, height: 0 }, $('#bars'));
+  if (i % 3 === 0 || i === 17) mk('text', { x: SX + i * bw + bw / 2, y: SB + 30, 'text-anchor': 'middle', 'font-family': 'Inter', 'font-size': 16, fill: '#8d9591' }, $('#axis')).textContent = w;
+  return r;
+});
+mk('text', { x: SX + SW, y: SB + 58, 'text-anchor': 'end', 'font-family': 'Inter', 'font-size': 16, fill: '#5d6662' }, $('#axis')).textContent = 'wavelength (nm)';
+mk('line', { x1: SX, x2: SX + SW, y1: SB, y2: SB, stroke: 'rgba(255,255,255,.2)' }, $('#axis'));
+mk('rect', { x: SX + 13 * bw, y: 10, width: 5 * bw, height: SB - 10, fill: 'rgba(155,124,255,.07)', rx: 8 }, $('#axis'));
+mk('text', { x: SX + 15.5 * bw, y: 34, 'text-anchor': 'middle', 'font-family': 'Inter', 'font-size': 16, 'font-weight': 700, 'letter-spacing': '3', fill: '#9b7cff' }, $('#axis')).textContent = 'NEAR-INFRARED';
+
+// photons along the beams
+const photons = Array.from({ length: 10 }, () => mk('circle', { r: 5, fill: '#fff' }, $('#photons')));
+const b1 = $('#b1'), b2 = $('#b2');
+
+// ---------- reference comparison chart
+const refs = [
+  { name: 'Good · 75% germinated', col: '#3ccf86', v: [.17, .19, .21, .24, .28, .32, .37, .41, .45, .5, .53, .57, .62, .68, .72, .74, .72, .63] },
+  { name: 'Damaged · 45%', col: '#f2ab3c', v: [.14, .15, .16, .18, .2, .23, .26, .29, .32, .36, .39, .42, .46, .5, .53, .55, .52, .42] },
+  { name: 'Broken / shriveled · 0%', col: '#ff5a4f', v: [.11, .11, .12, .13, .14, .16, .18, .2, .22, .24, .26, .28, .3, .33, .35, .36, .33, .25] },
+];
+const RX = 40, RW = 700, RB = 340, RH = 320;
+const pth = v => v.map((y, i) => `${i ? 'L' : 'M'}${RX + i * RW / 17},${RB - y * RH}`).join(' ');
+mk('line', { x1: RX, x2: RX + RW, y1: RB, y2: RB, stroke: 'rgba(255,255,255,.2)' }, $('#refs'));
+refs.forEach((r, i) => {
+  r.el = mk('path', { d: pth(r.v), fill: 'none', stroke: r.col, 'stroke-width': 4, 'stroke-linecap': 'round', 'stroke-dasharray': 1200, 'stroke-dashoffset': 1200 }, $('#refs'));
+  r.lab = mk('text', { x: RX + RW + 14, y: RB - r.v[17] * RH + 6, 'font-family': 'Inter', 'font-size': 18, 'font-weight': 600, fill: r.col }, $('#refs'));
+  r.lab.textContent = r.name.split(' · ')[1];
+  r.name0 = mk('text', { x: RX + RW + 14, y: RB - r.v[17] * RH + 28, 'font-family': 'Inter', 'font-size': 15, fill: '#8d9591' }, $('#refs'));
+  r.name0.textContent = r.name.split(' · ')[0];
+});
+const measEl = mk('path', { d: pth(meas), fill: 'none', stroke: '#fff', 'stroke-width': 5, 'stroke-linecap': 'round', 'stroke-dasharray': 1200, 'stroke-dashoffset': 1200 }, $('#refs'));
+const measLab = mk('text', { x: RX, y: 30, 'font-family': 'Inter', 'font-size': 18, 'font-weight': 650, fill: '#fff' }, $('#refs'));
+measLab.textContent = '— This sample';
+
+// phone spectral line
+$('#pline').setAttribute('d', meas.map((y, i) => `${i ? 'L' : 'M'}${8 + i * 300 / 17},${84 - y * 100}`).join(' '));
+
+// BLE rings
+const rings = Array.from({ length: 4 }, () => mk('circle', { fill: 'none', stroke: '#9b7cff', 'stroke-width': 3 }, $('#rings')));
+
+function render(t) {
+  // ----- 3D state
+  const ex = tw(t, 2.0, 2.8, ease.inOut) * (1 - tw(t, 6.6, 1.4, ease.inOut));
+  setExplode(P, ex);
+  // drawer stays open for the spectroscopy part, closes before the phone handoff
+  const dr = tw(t, 6.6, 1.4, ease.inOut) * (1 - tw(t, 17.6, 1.0, ease.inOut));
+  P.drawer.position.x += 5.2 * dr * (1 - ex);
+  root.rotation.y = -0.55 + Math.sin(t * 0.18) * 0.12 - 0.25 * tw(t, 6.6, 2, ease.inOut) + 0.3 * tw(t, 17.6, 2, ease.inOut);
+  shadow.material.opacity = 1 - ex * 0.5;
+
+  // camera: wide for the explode, device to the left third for the panels, centred again at the end
+  const cw = tw(t, 1.6, 2.8, ease.inOut) * (1 - tw(t, 6.6, 1.4, ease.inOut));
+  const side = tw(t, 6.6, 1.4, ease.inOut) * (1 - tw(t, 17.6, 1.2, ease.inOut));
+  const endP = tw(t, 21.6, 1.4, ease.inOut);
+  const hand = tw(t, 18.0, 1.2, ease.inOut) * (1 - endP);
+  const dist = lerp(33, 42, cw) + 7 * side + 12 * hand + 4 * endP;
+  const lookY = lerp(5.2, 6.4, cw);
+  cam.position.set(11 * dist / 33, lerp(8.5, 13, cw), dist); cam.lookAt(0, lookY, 0);
+  const off = 600 * side + 330 * hand;
+  cam.setViewOffset(1920, 1080, off, 120 * endP, 1920, 1080);
+  cam.updateProjectionMatrix();
+
+  // LED glows during the light-path beat; button press at "One button"
+  M.ledWhite.emissiveIntensity = 3 * env(t, 7.8, 17.4, .4, .6);
+  const press = env(t, 22.4, 22.75, .12, .25);
+  P.button.position.y = 7.34 - 0.12 * press;
+  M.ledGreen.emissiveIntensity = 2.5 + 2.5 * Math.sin(t * 3) * 0.5 + 5 * press;
+  scene.updateMatrixWorld(true);
+  renderer.render(scene, cam);
+
+  // ----- explode labels
+  const lo = env(t, 4.2, 6.3, .5, .5);
+  const placed = { l: [], r: [] };
+  labels.forEach((l, i) => {
+    l.v.set(...l.at).add(P[l.part].position).applyMatrix4(root.matrixWorld);
+    const s = toScreen(l.v, cam);
+    let y = s.y;
+    // keep labels in a column, pushed apart vertically
+    for (const py of placed[l.side]) if (Math.abs(py - y) < 74) y = py + (y >= py ? 74 : -74);
+    placed[l.side].push(y);
+    const lx = l.side === 'l' ? 230 : 1420;
+    const p = tw(t, 4.2 + i * 0.12, .6) * lo;
+    css(l.el, { left: lx + 'px', top: (y - 26) + 'px', opacity: p });
+    const ex2 = l.side === 'l' ? lx + 345 : lx - 15;
+    l.line.setAttribute('points', `${s.x},${s.y} ${lerp(s.x, ex2, .5)},${y} ${ex2},${y}`);
+    l.line.setAttribute('stroke-opacity', p);
+    l.dot.setAttribute('cx', s.x); l.dot.setAttribute('cy', s.y); l.dot.setAttribute('opacity', p);
+  });
+
+  // ----- spectroscopy panel 7.2 → 12.6
+  const po = env(t, 7.2, 12.6, .6, .6);
+  css('#panel', { opacity: po, transform: `translateX(${(1 - tw(t, 7.2, .9, ease.out5)) * 60}px)` });
+  b1.setAttribute('stroke-dashoffset', 320 * (1 - tw(t, 7.8, .6)));
+  b2.setAttribute('stroke-dashoffset', 320 * (1 - tw(t, 8.3, .6)));
+  photons.forEach((ph, i) => {
+    const f = (((t - 8.2) * 0.55 + i / photons.length) % 1 + 1) % 1;
+    const on = t > 8.4 && t < 12.6;
+    const pt = f < .5 ? b1.getPointAtLength(f * 2 * b1.getTotalLength()) : b2.getPointAtLength((f - .5) * 2 * b2.getTotalLength());
+    ph.setAttribute('cx', pt.x); ph.setAttribute('cy', pt.y); ph.setAttribute('opacity', on ? 0.9 : 0);
+    ph.setAttribute('fill', f < .5 ? '#fff6dc' : '#c9b8ff');
+  });
+  $('#ledg').setAttribute('opacity', 0.6 + 0.4 * Math.sin(t * 5));
+  barEls.forEach((b, i) => {
+    const h = meas[i] * SH * 1.25 * tw(t, 8.9 + i * 0.05, .7, ease.out5);
+    b.setAttribute('y', SB - h); b.setAttribute('height', h);
+  });
+  $$('#pchips .pchip').forEach((c, i) => {
+    const p = tw(t, 9.7 + i * 0.55, .5, ease.back);
+    css(c, { opacity: clamp(p), transform: `translateY(${(1 - p) * 16}px)` });
+  });
+
+  // ----- reference comparison 12.8 → 17.8
+  const ro = env(t, 12.8, 17.6, .6, .6);
+  css('#refPanel', { opacity: ro, transform: `translateX(${(1 - tw(t, 12.8, .9, ease.out5)) * 60}px)` });
+  refs.forEach((r, i) => {
+    r.el.setAttribute('stroke-dashoffset', 1200 * (1 - tw(t, 13.2 + i * .25, 1.0, ease.inOut)));
+    const dim = tw(t, 15.4, .6);
+    r.el.setAttribute('stroke-opacity', i === 0 ? 1 : 1 - .7 * dim);
+    r.el.setAttribute('stroke-width', i === 0 ? 4 + 3 * dim : 4);
+    const lo2 = tw(t, 14.0 + i * .2, .5);
+    r.lab.setAttribute('opacity', lo2 * (i === 0 ? 1 : 1 - .6 * dim)); r.name0.setAttribute('opacity', lo2 * (i === 0 ? 1 : 1 - .6 * dim));
+  });
+  measEl.setAttribute('stroke-dashoffset', 1200 * (1 - tw(t, 14.4, 1.0, ease.inOut)));
+  measLab.setAttribute('opacity', tw(t, 14.4, .5));
+  css('#verdict', { opacity: tw(t, 15.6, .6) });
+  $('#vnum').textContent = Math.round(72 * tw(t, 15.6, 1.4)) + '%';
+
+  // ----- handoff to the phone 18.2 → 22.0
+  const ph = env(t, 18.4, 22.1, .9, .7);
+  const pin = tw(t, 18.4, 1.2, ease.out5);
+  css('#phoneWrap', { opacity: ph });
+  css('#phone', { transform: `translateX(${(1 - pin) * 160}px) rotateY(-12deg)` });
+  $('#pscore').textContent = Math.round(91 * tw(t, 19.8, 1.2));
+  $('#pgerm').textContent = Math.round(72 * tw(t, 20.2, 1.2)) + '%';
+  const top = toScreen(new THREE.Vector3(3.0, 7.6, -0.6).applyMatrix4(root.matrixWorld), cam);
+  rings.forEach((c, i) => {
+    const f = (((t - 18.6) * 0.8 + i / rings.length) % 1 + 1) % 1;
+    const on = t > 18.8 && t < 21.4;
+    c.setAttribute('cx', lerp(top.x, 1460, f)); c.setAttribute('cy', lerp(top.y, 420, f));
+    c.setAttribute('r', 18 + f * 50); c.setAttribute('stroke-opacity', on ? (1 - f) * .9 : 0);
+  });
+
+  // ----- closing words
+  ['#w1', '#w2', '#w3'].forEach((w, i) => {
+    const a = [22.3, 23.8, 25.2][i];
+    const p = tw(t, a, .7, ease.out5);
+    css(w, { opacity: p, transform: `translateY(${(1 - p) * 24}px)`, filter: p < .99 ? `blur(${(1 - p) * 8}px)` : 'none' });
+  });
+  css('#specs', { opacity: tw(t, 26.0, .8) * .9 });
+}
+register(28, render);
+</script></body></html>

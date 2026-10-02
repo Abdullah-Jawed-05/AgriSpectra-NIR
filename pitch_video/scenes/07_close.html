@@ -1,0 +1,126 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>07 Close</title>
+<link rel="stylesheet" href="../lib/base.css">
+<link rel="stylesheet" href="../lib/phone.css">
+<style>
+  canvas { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  #l1 { left: 0; right: 0; top: 420px; text-align: center; font-size: 76px; }
+  #phoneWrap { left: 330px; top: 215px; transform-origin: 50% 50%; }
+  #seedC { left: 860px; top: 440px; width: 200px; height: 200px; }
+  .say { position: absolute; top: 880px; width: 640px; text-align: center; font-size: 44px; font-weight: 650; letter-spacing: -0.02em; }
+  #sayL { left: 220px; } #sayR { left: 1060px; }
+  #l3 { left: 0; right: 0; top: 70px; text-align: center; font-size: 70px; }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  #green { position: absolute; inset: 0; opacity: 0; background: radial-gradient(1400px 900px at 50% 40%, #13805f 0%, #0b5a43 45%, #062f24 100%); }
+  #card { left: 0; right: 0; top: 0; bottom: 0; opacity: 0; }
+  #mark { position: absolute; left: 50%; top: 210px; width: 132px; height: 132px; margin-left: -66px; }
+  #word { position: absolute; left: 0; right: 0; top: 360px; text-align: center; font-size: 132px; font-weight: 760; letter-spacing: -0.045em; color: #fff; }
+  #punch { position: absolute; left: 0; right: 0; top: 530px; text-align: center; font-size: 76px; font-weight: 650; letter-spacing: -0.03em; color: #d7fbe8; }
+  #tag { position: absolute; left: 0; right: 0; top: 640px; text-align: center; font-size: 26px; font-weight: 500; color: rgba(255,255,255,.62); letter-spacing: .26em; text-transform: uppercase; }
+  #icons { position: absolute; left: 0; right: 0; top: 750px; display: flex; justify-content: center; gap: 110px; }
+  .ic { text-align: center; color: rgba(255,255,255,.88); font-size: 22px; font-weight: 550; }
+  .ic svg { display: block; margin: 0 auto 14px; width: 92px; height: 92px; }
+</style></head>
+<body><div class="stage"></div>
+<canvas id="c"></canvas>
+
+<div id="l1" class="abs h2" style="opacity:0">A farmer shouldn't have to gamble<br>a whole season on a bag of seed.</div>
+
+<div id="phoneWrap" class="abs" style="opacity:0">
+  <div class="phone" style="transform:scale(.72);transform-origin:0 0"><div class="screen" style="background:#0d0f0e"><div class="island"></div>
+    <div style="position:absolute;left:34px;right:34px;top:170px;height:560px;border-radius:10px;background:linear-gradient(160deg,#f4f2ec,#e3e0d6)"></div>
+    <svg id="pseeds" style="position:absolute;left:0;top:0" width="414" height="884"></svg>
+    <div style="position:absolute;left:0;right:0;top:90px;text-align:center;color:#fff;font-weight:650;font-size:20px">Camera · visual screening</div>
+  </div></div>
+</div>
+<svg id="seedC" class="abs" viewBox="-100 -100 200 200" style="opacity:0">
+  <defs>
+    <clipPath id="leftHalf"><rect x="-100" y="-100" width="100" height="200"/></clipPath>
+    <clipPath id="rightHalf"><rect x="0" y="-100" width="100" height="200"/></clipPath>
+    <radialGradient id="inner"><stop offset="0" stop-color="#c9b8ff"/><stop offset="1" stop-color="#5b3fa0"/></radialGradient>
+  </defs>
+  <path id="sp" d="M0,-80 C42,-48 42,48 0,80 C-42,48 -42,-48 0,-80Z" transform="rotate(90)" fill="#d4ac6c" clip-path="url(#leftHalf)"/>
+  <g clip-path="url(#rightHalf)"><path d="M0,-80 C42,-48 42,48 0,80 C-42,48 -42,-48 0,-80Z" transform="rotate(90)" fill="url(#inner)"/></g>
+  <path d="M0,-80 C42,-48 42,48 0,80 C-42,48 -42,-48 0,-80Z" transform="rotate(90)" fill="none" stroke="#fff" stroke-width="3"/>
+  <line x1="0" y1="-60" x2="0" y2="60" stroke="#fff" stroke-width="2" stroke-dasharray="4 6"/>
+</svg>
+<div class="say" id="sayL" style="opacity:0">The phone sees <span class="grad-green">the outside.</span></div>
+<div class="say" id="sayR" style="opacity:0">The NIR sees <span style="color:#c9b8ff">the inside.</span></div>
+<div id="l3" class="abs h2" style="opacity:0">And the farmer knows <span class="grad-green">before they plant.</span></div>
+
+<div id="green"></div>
+<div id="card" class="abs">
+  <svg id="mark" viewBox="0 0 100 100">
+    <defs><clipPath id="mk"><path d="M50,14 C71,30 71,70 50,90 C29,70 29,30 50,14Z"/></clipPath></defs>
+    <path d="M50,14 C71,30 71,70 50,90 C29,70 29,30 50,14Z" fill="#fff"/>
+    <rect id="band" x="20" y="47" width="60" height="11" fill="#13805f" clip-path="url(#mk)"/>
+  </svg>
+  <div id="word">AgriSpectra</div>
+  <div id="punch">Know what you sow.</div>
+  <div id="tag">Seeds Today, Bigger Tomorrows</div>
+  <div id="icons">
+    <div class="ic" id="i1"><svg viewBox="0 0 92 92" fill="none" stroke="#fff" stroke-width="2.4"><circle cx="46" cy="46" r="44" stroke-opacity=".5"/><path d="M30,60 C30,38 46,28 62,28 C62,48 52,60 30,60Z M30,60 L50,40" stroke-linecap="round" stroke-linejoin="round"/></svg>Better Seeds</div>
+    <div class="ic" id="i2"><svg viewBox="0 0 92 92" fill="none" stroke="#fff" stroke-width="2.4"><circle cx="46" cy="46" r="44" stroke-opacity=".5"/><circle cx="46" cy="36" r="8"/><circle cx="29" cy="42" r="6"/><circle cx="63" cy="42" r="6"/><path d="M32,64 C32,52 60,52 60,64 M18,62 C18,54 30,52 34,55 M74,62 C74,54 62,52 58,55" stroke-linecap="round"/></svg>Stronger Communities</div>
+    <div class="ic" id="i3"><svg viewBox="0 0 92 92" fill="none" stroke="#fff" stroke-width="2.4"><circle cx="46" cy="46" r="44" stroke-opacity=".5"/><circle cx="46" cy="46" r="24"/><ellipse cx="46" cy="46" rx="10" ry="24"/><path d="M22,46 H70 M26,34 H66 M26,58 H66"/></svg>A Greener Planet</div>
+  </div>
+</div>
+<div id="flash"></div>
+
+<script type="module">
+import { THREE, makeRenderer, studio, buildDevice, blobShadow, loadFonts } from '../lib/device.js';
+import { $, $$, css, tw, env, reveal, ease, prog, lerp, clamp, rng, register } from '../lib/core.js';
+await loadFonts();
+const NS = 'http://www.w3.org/2000/svg';
+const renderer = makeRenderer($('#c'), { alpha: true });
+const scene = new THREE.Scene();
+const L = studio(scene, renderer);
+const { root, P, M } = buildDevice(); scene.add(root);
+const shadow = blobShadow(18, 13, 0.85); shadow.position.y = -0.05; scene.add(shadow);
+const cam = new THREE.PerspectiveCamera(28, 16 / 9, 0.1, 300);
+
+// seeds + rings in the phone viewfinder
+const R = rng(4);
+for (let r = 0; r < 6; r++) for (let c = 0; c < 5; c++) {
+  const x = 85 + c * 62 + (R() - .5) * 14, y = 230 + r * 80 + (R() - .5) * 16, a = R() * 180;
+  const e = document.createElementNS(NS, 'ellipse'); e.setAttribute('cx', x); e.setAttribute('cy', y); e.setAttribute('rx', 17); e.setAttribute('ry', 8); e.setAttribute('fill', '#c9a165'); e.setAttribute('transform', `rotate(${a} ${x} ${y})`); $('#pseeds').appendChild(e);
+  const g = document.createElementNS(NS, 'ellipse'); g.setAttribute('cx', x); g.setAttribute('cy', y); g.setAttribute('rx', 25); g.setAttribute('ry', 15); g.setAttribute('fill', 'none'); g.setAttribute('stroke', '#2fbf78'); g.setAttribute('stroke-width', 2.5); g.setAttribute('transform', `rotate(${a} ${x} ${y})`); $('#pseeds').appendChild(g);
+}
+
+function render(t) {
+  reveal('#l1', t, 0.3, 4.2);
+
+  // phone (left) · seed (centre) · device (right)
+  const conv = tw(t, 8.0, 1.0, ease.in);            // everything pulls into the centre
+  const pin = tw(t, 4.6, 1.0, ease.out5);
+  css('#phoneWrap', { opacity: pin * (1 - conv), transform: `translateX(${(1 - pin) * -60 + conv * 520}px) scale(${1 - .5 * conv})` });
+  const sp = tw(t, 5.0, .9, ease.back);
+  css('#seedC', { opacity: clamp(sp) * (1 - tw(t, 8.6, .3)), transform: `scale(${(.6 + .4 * sp) * (1 + .4 * conv)})` });
+  reveal('#sayL', t, 5.0, 7.7);
+  reveal('#sayR', t, 6.3, 7.7);
+  reveal('#l3', t, 7.2, 8.6);
+
+  const din = tw(t, 4.8, 1.2, ease.out5);
+  root.position.set(0, lerp(-3, 0, din), 0);
+  root.rotation.y = -0.75 + t * 0.03;
+  M.ledGreen.emissiveIntensity = 2.5 + Math.sin(t * 3);
+  cam.position.set(11, 8.5, 38); cam.lookAt(0, 4.6, 0);
+  cam.setViewOffset(1920, 1080, lerp(-470, 0, conv), 0, 1920, 1080);
+  cam.updateProjectionMatrix();
+  const showDev = t > 4.6 && t < 9.0;
+  $('#c').style.opacity = showDev ? din * (1 - tw(t, 8.4, .4)) : 0;
+  if (showDev) renderer.render(scene, cam);
+
+  // flash, then the green end card
+  css('#flash', { opacity: env(t, 8.75, 9.1, .2, .7) });
+  css('#green', { opacity: tw(t, 9.0, .1) });
+  css('#card', { opacity: tw(t, 9.0, .1) });
+  const mk = tw(t, 9.2, .9, ease.back);
+  css('#mark', { opacity: clamp(mk), transform: `scale(${.7 + .3 * mk})` });
+  $('#band').setAttribute('y', lerp(20, 47, tw(t, 9.4, 1.0, ease.inOut)));
+  reveal('#word', t, 9.6);
+  reveal('#punch', t, 10.6);
+  reveal('#tag', t, 11.6);
+  ['#i1', '#i2', '#i3'].forEach((s, i) => reveal(s, t, 12.2 + i * .25, 1e6, 20));
+}
+register(16, render);
+</script></body></html>

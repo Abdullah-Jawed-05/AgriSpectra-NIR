@@ -1,0 +1,255 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>01 Problem</title>
+<link rel="stylesheet" href="../lib/base.css">
+<style>
+  #cap { top: 120px; }
+  .cap { position: absolute; left: 0; right: 0; text-align: center; }
+  #bag { left: 0; top: 0; width: 1920px; height: 1080px; }
+  .tl-label { position: absolute; top: 905px; font-size: 20px; font-weight: 550; color: var(--muted); transform: translateX(-50%); letter-spacing: 0.02em; white-space: nowrap; }
+  .seg-label { position: absolute; font-size: 21px; color: var(--muted); white-space: nowrap; transform: translateX(-50%); text-align: center; line-height: 1.35; }
+  .seg-label b { display: block; color: var(--text); font-size: 27px; font-weight: 650; letter-spacing: -0.01em; }
+  #total { left: 0; right: 0; top: 690px; text-align: center; }
+  #totalnum { font-size: 132px; font-weight: 750; letter-spacing: -0.04em; }
+  #acres { left: 0; right: 0; top: 905px; text-align: center; font-size: 34px; font-weight: 550; color: var(--text); }
+  #acres span { color: var(--red); font-weight: 700; }
+  #src { left: 0; right: 0; bottom: 42px; text-align: center; }
+</style></head>
+<body><div class="stage"></div>
+
+<svg id="bag" class="abs" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="burlap" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9bb84"/><stop offset=".55" stop-color="#b08a52"/><stop offset="1" stop-color="#6e5330"/>
+    </linearGradient>
+    <radialGradient id="bagShade" cx=".35" cy=".35" r=".8">
+      <stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/>
+    </radialGradient>
+    <pattern id="weave" width="7" height="7" patternUnits="userSpaceOnUse">
+      <path d="M0 3.5h7M3.5 0v7" stroke="#3b2a14" stroke-opacity=".18" stroke-width="1.2"/>
+    </pattern>
+    <radialGradient id="floorGlow" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#000" stop-opacity=".7"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="counter" x1="0" x2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="soil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a3624"/><stop offset="1" stop-color="#2a1e14"/>
+    </linearGradient>
+    <radialGradient id="lens" cx=".4" cy=".35" r=".7">
+      <stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#9fd" stop-opacity=".05"/>
+    </radialGradient>
+  </defs>
+
+  <!-- counter line -->
+  <rect id="counterLine" x="360" y="871" width="1200" height="2" fill="url(#counter)"/>
+
+  <!-- seed bag -->
+  <g id="bagG">
+    <ellipse cx="0" cy="222" rx="230" ry="26" fill="url(#floorGlow)"/>
+    <g>
+      <path id="sack" d="M-150,-170 C-175,-120 -205,40 -200,150 C-196,205 -150,222 0,222 C150,222 196,205 200,150 C205,40 175,-120 150,-170 Z" fill="url(#burlap)"/>
+      <path d="M-150,-170 C-175,-120 -205,40 -200,150 C-196,205 -150,222 0,222 C150,222 196,205 200,150 C205,40 175,-120 150,-170 Z" fill="url(#weave)"/>
+      <path d="M-150,-170 C-175,-120 -205,40 -200,150 C-196,205 -150,222 0,222 C150,222 196,205 200,150 C205,40 175,-120 150,-170 Z" fill="url(#bagShade)"/>
+      <!-- gathered neck -->
+      <path d="M-150,-170 C-110,-190 -60,-200 -40,-215 L40,-215 C60,-200 110,-190 150,-170 C90,-160 -90,-160 -150,-170Z" fill="#a07c48"/>
+      <path d="M-46,-216 C-70,-250 -60,-282 -30,-292 L30,-292 C60,-282 70,-250 46,-216 Z" fill="#c4a36d"/>
+      <path d="M-46,-216 C-70,-250 -60,-282 -30,-292 L30,-292 C60,-282 70,-250 46,-216 Z" fill="url(#weave)"/>
+      <rect x="-52" y="-226" width="104" height="16" rx="8" fill="#5a3f22"/>
+      <!-- folds -->
+      <path d="M-120,-140 C-140,-60 -150,60 -140,170" stroke="#4d3920" stroke-opacity=".35" stroke-width="5" fill="none"/>
+      <path d="M118,-130 C135,-40 140,80 132,175" stroke="#4d3920" stroke-opacity=".3" stroke-width="5" fill="none"/>
+      <!-- label -->
+      <g transform="translate(0,30)">
+        <rect x="-112" y="-80" width="224" height="150" rx="10" fill="#f4efe4"/>
+        <rect x="-112" y="-80" width="224" height="150" rx="10" fill="none" stroke="#2d6e4f" stroke-width="3" stroke-opacity=".55"/>
+        <path d="M-12,-48 C-2,-62 18,-62 22,-58 C20,-40 4,-30 -12,-34 C-14,-38 -14,-44 -12,-48Z" fill="#2d8a5c"/>
+        <text x="0" y="-2" text-anchor="middle" font-family="Inter" font-weight="800" font-size="30" fill="#2a2a24" letter-spacing="2">SEED</text>
+        <text x="0" y="26" text-anchor="middle" font-family="Inter" font-weight="600" font-size="15" fill="#6d6a5e" letter-spacing="3">CERTIFIED*</text>
+        <text x="0" y="52" text-anchor="middle" font-family="Inter" font-weight="700" font-size="17" fill="#2a2a24" letter-spacing="1">50 KG</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- magnifier -->
+  <g id="mag" opacity="0">
+    <circle r="92" fill="url(#lens)" stroke="#e9eeec" stroke-width="10"/>
+    <rect x="62" y="62" width="26" height="110" rx="13" transform="rotate(-45 62 62)" fill="#d9dfdc"/>
+    <text id="q" x="0" y="34" text-anchor="middle" font-family="Inter" font-weight="800" font-size="96" fill="#ffffff">?</text>
+  </g>
+
+  <!-- timeline -->
+  <g id="timeline" opacity="0">
+    <rect id="tlTrack" x="330" y="880" width="1370" height="3" rx="1.5" fill="#ffffff" fill-opacity=".14"/>
+    <rect id="tlFill" x="330" y="880" width="0" height="3" rx="1.5" fill="#ffffff" fill-opacity=".7"/>
+    <circle id="tlDot" cx="330" cy="881.5" r="9" fill="#fff"/>
+    <g id="ticks"></g>
+  </g>
+
+  <!-- field -->
+  <g id="field" opacity="0">
+    <rect x="640" y="300" width="1060" height="520" rx="22" fill="url(#soil)"/>
+    <rect x="640" y="300" width="1060" height="520" rx="22" fill="none" stroke="#fff" stroke-opacity=".08"/>
+    <g id="rows"></g>
+    <g id="plants"></g>
+  </g>
+
+  <!-- loss bar -->
+  <g id="bar" opacity="0">
+    <g id="segs"></g>
+  </g>
+</svg>
+
+<div id="labels"></div>
+<div id="caps">
+  <div class="cap h2" id="c1" style="top:150px">A bet they can't check.</div>
+  <div class="cap h2" id="c2" style="top:150px">Bought on trust.</div>
+  <div class="cap h2" id="c3" style="top:120px">They find out in the field.</div>
+  <div class="cap h2" id="c4" style="top:150px">The money. The land. The season.</div>
+</div>
+<div id="total" class="abs" style="opacity:0">
+  <div class="kicker" style="margin-bottom:6px">Lost per acre before harvest</div>
+  <div id="totalnum">Rs 0</div>
+</div>
+<div id="acres" class="abs" style="opacity:0">A 5-acre farmer: <span>Rs 4.36 lakh</span> gone in one season.</div>
+<div id="src" class="abs src" style="opacity:0">Wheat cost of production per acre, 2023–24 · Crop Reporting Service, Agriculture Department, Government of Punjab. Excludes harvesting.</div>
+
+<script type="module">
+import { $, $$, css, tw, env, reveal, ease, prog, lerp, clamp, rng, fmt, register } from '../lib/core.js';
+const NS = 'http://www.w3.org/2000/svg';
+const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+
+// timeline ticks
+const ticks = ['At the shop', 'Sowing', 'Week 1', 'Week 2', 'Week 3'];
+const tickX = ticks.map((_, i) => 330 + i * (1370 / 4));
+ticks.forEach((name, i) => {
+  mk('circle', { cx: tickX[i], cy: 881.5, r: 5, fill: '#fff', 'fill-opacity': .35 }, $('#ticks'));
+  const d = document.createElement('div'); d.className = 'tl-label'; d.textContent = name; d.style.left = tickX[i] + 'px'; d.style.opacity = 0; d.dataset.tick = i;
+  $('#labels').appendChild(d);
+});
+
+// field rows + plants
+const R = rng(7);
+const rows = 6, cols = 15;
+const plants = [];
+for (let r = 0; r < rows; r++) {
+  const y = 360 + r * 82 + 40;
+  mk('rect', { x: 680, y: y - 4, width: 980, height: 16, rx: 8, fill: '#1c140d', 'fill-opacity': .55 }, $('#rows'));
+  for (let c = 0; c < cols; c++) {
+    const x = 712 + c * 66 + (R() - .5) * 10;
+    const ok = R() < 0.38;
+    const g = mk('g', { transform: `translate(${x},${y})` }, $('#plants'));
+    if (ok) {
+      const stem = mk('path', { d: 'M0,0 C2,-20 -2,-40 0,-58', stroke: '#63c45a', 'stroke-width': 4, fill: 'none', 'stroke-linecap': 'round' }, g);
+      const l1 = mk('path', { d: 'M0,-30 C-18,-38 -28,-52 -30,-60 C-14,-56 -4,-46 0,-34Z', fill: '#4fb04a' }, g);
+      const l2 = mk('path', { d: 'M0,-40 C16,-48 24,-62 26,-70 C12,-66 3,-56 0,-44Z', fill: '#74d06a' }, g);
+      plants.push({ g, ok, delay: R() * 2.4, stem, len: 60 });
+    } else {
+      mk('ellipse', { cx: 0, cy: 2, rx: 6, ry: 3.5, fill: '#6b5236' }, g);
+      plants.push({ g, ok, delay: R() * 2.4 });
+    }
+  }
+}
+
+// loss segments
+const segs = [
+  ['Seed & sowing', 6829], ['Land preparation', 11096], ['Fertilizer', 17614], ['Irrigation', 7998], ['Land rent, sprays & other', 43650],
+];
+const total = segs.reduce((a, s) => a + s[1], 0);
+const BX = 260, BW = 1400, BY = 470, BH = 84;
+let acc = 0;
+const segEls = segs.map(([name, v], i) => {
+  const x = BX + (acc / total) * BW, w = (v / total) * BW; acc += v;
+  const tone = ['#3a4a44', '#46574f', '#53665d', '#5f746a', '#6b8277'][i];
+  const r = mk('rect', { x, y: BY, width: w - 4, height: BH, rx: 10, fill: tone }, $('#segs'));
+  const red = mk('rect', { x, y: BY, width: w - 4, height: BH, rx: 10, fill: '#ff4b40', opacity: 0 }, $('#segs'));
+  const lab = document.createElement('div'); lab.className = 'seg-label';
+  lab.innerHTML = `<b>Rs ${fmt(v)}</b>${name}`;
+  const above = i % 2 === 0;
+  lab.style.left = (x + w / 2) + 'px'; lab.style.top = above ? (BY - 96) + 'px' : (BY + BH + 18) + 'px';
+  if (i === 4) { lab.style.top = (BY - 96) + 'px'; }
+  if (i === 3) { lab.style.top = (BY + BH + 18) + 'px'; }
+  lab.style.opacity = 0;
+  $('#labels').appendChild(lab);
+  return { r, red, lab, x, w };
+});
+
+function render(t) {
+  // captions
+  reveal('#c1', t, 0.8, 5.2);
+  reveal('#c2', t, 5.8, 10.0);
+  reveal('#c3', t, 10.6, 16.6);
+  reveal('#c4', t, 17.2, 99);
+
+  // bag: enters, then shrinks to the left for the timeline, then leaves
+  const pin = tw(t, 0.2, 1.4, ease.out5);
+  const pmove = tw(t, 10.0, 1.4, ease.inOut);
+  const pout = tw(t, 16.6, 0.8, ease.inOut);
+  const bx = lerp(960, 330, pmove), by = lerp(600, 610, pmove) + (1 - pin) * 60;
+  const bs = lerp(1.22, 0.6, pmove) * (0.94 + 0.06 * pin);
+  const sway = Math.sin(t * 1.3) * 0.6;
+  $('#bagG').setAttribute('transform', `translate(${bx},${by}) scale(${bs}) rotate(${sway})`);
+  $('#bagG').setAttribute('opacity', pin * (1 - pout));
+  $('#counterLine').setAttribute('opacity', pin * (1 - pmove));
+
+  // magnifier sweep
+  const mo = env(t, 5.6, 9.6, .5, .4);
+  const mp = tw(t, 5.6, 4.0, ease.inOut);
+  const mx = 960 + Math.sin(mp * Math.PI * 1.5) * 140 + 60, my = 620 + Math.cos(mp * Math.PI * 1.5) * 40 - 20;
+  $('#mag').setAttribute('transform', `translate(${mx},${my})`);
+  $('#mag').setAttribute('opacity', mo);
+  $('#q').setAttribute('opacity', 0.5 + 0.5 * Math.abs(Math.sin(t * 3)));
+
+  // timeline
+  const tlo = env(t, 10.4, 16.6, .6, .7);
+  $('#timeline').setAttribute('opacity', tlo);
+  const tp = tw(t, 11.0, 5.0, ease.inOut);
+  const fx = 330 + tp * 1370;
+  $('#tlFill').setAttribute('width', tp * 1370);
+  $('#tlDot').setAttribute('cx', fx);
+  $$('.tl-label').forEach(d => {
+    const i = +d.dataset.tick;
+    const reached = tp * 4 >= i - 0.05;
+    d.style.opacity = tlo * (reached ? 1 : 0.35);
+    d.style.color = reached ? '#f5f5f7' : '';
+  });
+
+  // field
+  const fo = env(t, 11.0, 16.6, .8, .7);
+  $('#field').setAttribute('opacity', fo);
+  plants.forEach(p => {
+    const g0 = 12.4 + p.delay;
+    const gp = tw(t, g0, 1.4, ease.back);
+    if (p.ok) {
+      p.g.setAttribute('opacity', clamp(gp * 3));
+      const tr = p.g.getAttribute('transform').split(' scale')[0];
+      p.g.setAttribute('transform', `${tr} scale(${Math.max(0.001, gp)})`);
+    } else {
+      // failed seed: darkens and shrinks slightly
+      const fp = tw(t, g0, 1.4);
+      p.g.setAttribute('opacity', 1 - 0.55 * fp);
+    }
+  });
+
+  // loss bar
+  const bo = env(t, 17.4, 99);
+  $('#bar').setAttribute('opacity', bo);
+  segEls.forEach((s, i) => {
+    const a = 17.8 + i * 0.75;
+    const p = tw(t, a, 0.8, ease.out5);
+    s.r.setAttribute('width', Math.max(0, (s.w - 4) * p));
+    s.red.setAttribute('width', Math.max(0, (s.w - 4) * p));
+    reveal(s.lab, t, a + 0.25, 99, 14);
+    const rp = tw(t, 22.0 + i * 0.08, 0.6);
+    s.red.setAttribute('opacity', rp);
+  });
+
+  const to = tw(t, 22.0, 0.9, ease.out5);
+  css('#total', { opacity: to, transform: `translateY(${(1 - to) * 20}px)` });
+  const cnt = tw(t, 22.0, 1.6, ease.out);
+  $('#totalnum').innerHTML = `<span class="grad-red">Rs ${fmt(Math.round(total * cnt))}</span>`;
+  reveal('#acres', t, 24.0);
+  css('#src', { opacity: 0.9 * tw(t, 22.5, 1) });
+}
+register(27, render);
+</script></body></html>

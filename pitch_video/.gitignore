@@ -1,0 +1,9 @@
+node_modules/
+out/
+frames/
+clips/
+lib/three.module.js
+lib/three.core.js
+lib/RoundedBoxGeometry.js
+lib/RoomEnvironment.js
+lib/inter.woff2
