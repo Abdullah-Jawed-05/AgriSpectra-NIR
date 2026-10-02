@@ -80,10 +80,15 @@ class QualityClassBadge extends StatelessWidget {
 
 /// Large 0..100 score, color-coded by band. Used on the result screen and
 /// seed cards.
+///
+/// The band is never color-only: a glyph (check / caution / low) carries
+/// the same signal, so a grid of seed cards is scannable without relying
+/// on hue discrimination, and the band reads before the number is read.
 class ScoreDisplay extends StatelessWidget {
-  const ScoreDisplay({super.key, required this.score, this.size = 40});
+  const ScoreDisplay({super.key, required this.score, this.size = 40, this.showIcon = true});
   final double score;
   final double size;
+  final bool showIcon;
 
   Color get _color {
     if (score >= 75) return AppColors.good;
@@ -91,21 +96,43 @@ class ScoreDisplay extends StatelessWidget {
     return AppColors.low;
   }
 
+  IconData get _icon {
+    if (score >= 75) return Icons.check_circle_rounded;
+    if (score >= 50) return Icons.error_rounded;
+    return Icons.cancel_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return RichText(
-      text: TextSpan(
-        children: [
-          TextSpan(
-            text: score.round().toString(),
-            style: TextStyle(fontSize: size, fontWeight: FontWeight.w800, color: _color, height: 1),
-          ),
-          TextSpan(
-            text: ' / 100',
-            style: TextStyle(fontSize: size * 0.35, fontWeight: FontWeight.w600, color: AppColors.inkFaint),
-          ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (showIcon) ...[
+          Icon(_icon, color: _color, size: size * 0.42),
+          SizedBox(width: size * 0.12),
         ],
-      ),
+        RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: score.round().toString(),
+                style: TextStyle(
+                  fontSize: size,
+                  fontWeight: FontWeight.w800,
+                  color: _color,
+                  height: 1,
+                  letterSpacing: -size * 0.02,
+                ),
+              ),
+              TextSpan(
+                text: ' / 100',
+                style: TextStyle(fontSize: size * 0.35, fontWeight: FontWeight.w600, color: AppColors.inkFaint),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -37,20 +37,33 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
             child: SizedBox(
               height: 36,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  _FilterChip(label: 'All', selected: _cropFilter == null, onTap: () => setState(() => _cropFilter = null)),
-                  for (final c in Crop.values)
-                    Padding(
-                      padding: const EdgeInsets.only(left: AppSpacing.sm),
-                      child: _FilterChip(
-                        label: c.label,
-                        selected: _cropFilter == c.label,
-                        onTap: () => setState(() => _cropFilter = c.label),
+              // A fixed set of crops today, but Crop is deliberately built to
+              // grow — the edge fade signals "more to scroll to" the moment
+              // it no longer all fits, instead of chips just stopping at the
+              // screen edge with no hint there's more.
+              child: ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [Colors.transparent, Colors.black, Colors.black, Colors.transparent],
+                  stops: [0.0, 0.03, 0.97, 1.0],
+                ).createShader(bounds),
+                blendMode: BlendMode.dstIn,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _FilterChip(label: 'All', selected: _cropFilter == null, onTap: () => setState(() => _cropFilter = null)),
+                    for (final c in Crop.values)
+                      Padding(
+                        padding: const EdgeInsets.only(left: AppSpacing.sm),
+                        child: _FilterChip(
+                          label: c.label,
+                          selected: _cropFilter == c.label,
+                          onTap: () => setState(() => _cropFilter = c.label),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -66,7 +79,31 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               data: (scans) {
                 if (scans.isEmpty) {
                   return Center(
-                    child: Text('No scans yet.', style: Theme.of(context).textTheme.bodyMedium),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xl),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.history_toggle_off, size: 40, color: AppColors.inkFaint),
+                          const SizedBox(height: AppSpacing.md),
+                          Text(
+                            _cropFilter == null ? 'No scans yet.' : 'No ${_cropFilter!} scans yet.',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            'Scan a batch of seeds to see results here.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                            label: const Text('Start a scan'),
+                            onPressed: () => context.push('/scan/crop'),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 }
                 return ListView.separated(

@@ -10,6 +10,35 @@ import '../../core/theme/app_theme.dart';
 
 enum _FlowPhase { initializingCamera, cameraError, ready, analyzing, analysisFailed }
 
+/// Translates a raw camera-init exception into a plain-language message a
+/// grower can act on — a `PlatformException` stack string is not an
+/// explanation (§23 explainability discipline applies to error copy too,
+/// not just predictions).
+String _friendlyCameraError(Object e) {
+  if (e is CameraException) {
+    switch (e.code) {
+      case 'CameraAccessDenied':
+      case 'CameraAccessDeniedWithoutPrompt':
+      case 'CameraAccessRestricted':
+        return 'Camera access is turned off for AgriSpectra. Enable it in your '
+            'device Settings, then try again.';
+      default:
+        return 'The camera couldn\'t start. Close any other app using the '
+            'camera and try again.';
+    }
+  }
+  return 'The camera couldn\'t start. Please try again.';
+}
+
+/// Same idea for a failure during capture/analysis — keep the retry path
+/// front and center instead of surfacing exception internals.
+String _friendlyCaptureError(Object e) {
+  if (e is CameraException) {
+    return 'The camera had a problem taking that photo. Please try again.';
+  }
+  return 'Something went wrong during analysis. Please retake the photo.';
+}
+
 class ScanFlowScreen extends ConsumerStatefulWidget {
   const ScanFlowScreen({super.key, required this.crop});
   final String crop;
@@ -54,7 +83,7 @@ class _ScanFlowScreenState extends ConsumerState<ScanFlowScreen> {
     } catch (e) {
       setState(() {
         _phase = _FlowPhase.cameraError;
-        _errorMessage = 'Could not start the camera: $e';
+        _errorMessage = _friendlyCameraError(e);
       });
     }
   }
@@ -128,7 +157,7 @@ class _ScanFlowScreenState extends ConsumerState<ScanFlowScreen> {
       if (!mounted) return;
       setState(() {
         _phase = _FlowPhase.analysisFailed;
-        _errorMessage = 'Unexpected error during capture: $e';
+        _errorMessage = _friendlyCaptureError(e);
       });
     }
   }
@@ -202,21 +231,37 @@ class _CaptureView extends StatelessWidget {
             ),
           ),
         ),
+        // A top-anchored HUD strip rather than a floating rounded card —
+        // reads as calibrated camera tooling (exposure/grid-style overlay)
+        // instead of a dismissible tooltip, and its gradient fades into the
+        // live preview instead of occluding a hard-edged block of it.
         Positioned(
-          left: AppSpacing.lg,
-          right: AppSpacing.lg,
-          top: AppSpacing.lg,
+          left: 0,
+          right: 0,
+          top: 0,
           child: Container(
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.xl),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black.withValues(alpha: 0.75), Colors.black.withValues(alpha: 0.0)],
+              ),
             ),
-            child: const Text(
-              'Spread 10–50 seeds in a single layer inside the guide — '
-              'not touching, not piled.\n'
-              'Use a plain sheet of matte paper. Avoid shadows, glare and blur.',
-              style: TextStyle(color: Colors.white, fontSize: 12.5, height: 1.4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, color: Colors.white.withValues(alpha: 0.9), size: 16),
+                const SizedBox(width: AppSpacing.sm),
+                const Expanded(
+                  child: Text(
+                    'Spread 10–50 seeds in a single layer inside the guide — '
+                    'not touching, not piled.\n'
+                    'Use a plain sheet of matte paper. Avoid shadows, glare and blur.',
+                    style: TextStyle(color: Colors.white, fontSize: 12.5, height: 1.4),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -225,17 +270,27 @@ class _CaptureView extends StatelessWidget {
           right: 0,
           bottom: AppSpacing.xxl,
           child: Center(
-            child: GestureDetector(
-              onTap: onCapture,
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 4),
+            child: Semantics(
+              button: true,
+              label: 'Capture photo',
+              hint: 'Takes a photo of the seed batch and starts analysis',
+              child: Material(
+                color: Colors.transparent,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: onCapture,
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 4),
+                    ),
+                    child: const Icon(Icons.circle, color: Colors.black87, size: 56),
+                  ),
                 ),
-                child: const Icon(Icons.circle, color: Colors.black87, size: 56),
               ),
             ),
           ),

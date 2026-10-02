@@ -66,115 +66,173 @@ class ResultScreen extends ConsumerWidget {
   }
 }
 
-class _ResultBody extends ConsumerWidget {
+class _ResultBody extends ConsumerStatefulWidget {
   const _ResultBody({required this.scan});
   final Scan scan;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ResultBody> createState() => _ResultBodyState();
+}
+
+class _ResultBodyState extends ConsumerState<_ResultBody> {
+  final _scrollController = ScrollController();
+  // A ValueNotifier rather than setState for the whole body: this flips
+  // at most once per scroll direction change, and only the condensed
+  // header itself needs to rebuild when it does.
+  final _showCondensedHeader = ValueNotifier<bool>(false);
+
+  /// Past this offset the hero score block has scrolled out of view, so
+  /// the condensed header takes over — keeps the score/confidence visible
+  /// while reviewing a long batch instead of losing context on scroll.
+  static const _condensedThreshold = 160.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    final shouldShow = _scrollController.offset > _condensedThreshold;
+    if (shouldShow != _showCondensedHeader.value) {
+      _showCondensedHeader.value = shouldShow;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _showCondensedHeader.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scan = widget.scan;
     final spectralAsync = ref.watch(spectralByScanIdProvider(scan.scanId));
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(scan.crop.toUpperCase(), style: Theme.of(context).textTheme.labelSmall),
-          const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ScoreDisplay(score: scan.batchScore),
-              const SizedBox(width: AppSpacing.md),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: ConfidenceChip(confidence: scan.confidence),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${scan.batchStatistics.seedsAccepted} seeds analyzed · ${_modeLabel(scan.fusionResult.mode)}',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          _ClassSummaryStrip(seeds: scan.results),
-          const SizedBox(height: AppSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-              label: const Text('Save Report'),
-              onPressed: () => _saveReport(context, scan, spectralAsync.value),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          _BreakdownCard(scan: scan),
-          const SizedBox(height: AppSpacing.lg),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Text(scan.crop.toUpperCase(), style: Theme.of(context).textTheme.labelSmall),
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Score distribution', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: AppSpacing.md),
-                  SizedBox(height: 140, child: BatchHistogramChart(buckets: scan.batchStatistics.scoreHistogram)),
+                  ScoreDisplay(score: scan.batchScore, size: 56),
+                  const SizedBox(width: AppSpacing.md),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: ConfidenceChip(confidence: scan.confidence),
+                  ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          spectralAsync.maybeWhen(
-            data: (spectral) => spectral == null
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppSpacing.lg),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+              const SizedBox(height: 4),
+              Text(
+                '${scan.batchStatistics.seedsAccepted} seeds analyzed · ${_modeLabel(scan.fusionResult.mode)}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              _ClassSummaryStrip(seeds: scan.results),
+              const SizedBox(height: AppSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                  label: const Text('Save Report'),
+                  onPressed: () => _saveReport(context, scan, spectralAsync.value),
+                ),
+              ),
+              // A clearly larger gap ahead of the breakdown — spacing, not
+              // another bordered box, is what signals "new section" here.
+              const SizedBox(height: AppSpacing.xxl),
+              _BreakdownCard(scan: scan),
+              const SizedBox(height: AppSpacing.lg),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Score distribution', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: AppSpacing.md),
+                      SizedBox(height: 140, child: BatchHistogramChart(buckets: scan.batchStatistics.scoreHistogram)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              spectralAsync.maybeWhen(
+                data: (spectral) => spectral == null
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.lg),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('NIR spectral reading', style: Theme.of(context).textTheme.titleMedium),
-                                const Spacer(),
-                                if (spectral.isSimulated)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.nirMuted,
-                                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                                    ),
-                                    child: const Text(
-                                      'SIMULATED',
-                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.nir),
-                                    ),
-                                  ),
+                                Row(
+                                  children: [
+                                    Text('NIR spectral reading', style: Theme.of(context).textTheme.titleMedium),
+                                    const Spacer(),
+                                    if (spectral.isSimulated)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.nirMuted,
+                                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                                        ),
+                                        child: const Text(
+                                          'SIMULATED',
+                                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.nir),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: AppSpacing.md),
+                                SizedBox(height: 160, child: SpectralGraph(measurement: spectral)),
                               ],
                             ),
-                            const SizedBox(height: AppSpacing.md),
-                            SizedBox(height: 160, child: SpectralGraph(measurement: spectral)),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-            orElse: () => const SizedBox.shrink(),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text('Individual seeds', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.md),
+              _SeedsByClass(scan: scan),
+              const SizedBox(height: AppSpacing.xxl),
+              Text(
+                'AgriSpectra provides preliminary non-destructive seed-quality screening and is '
+                'not a replacement for certified laboratory germination or seed-quality testing.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+            ],
           ),
-          Text('Individual seeds', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: AppSpacing.md),
-          _SeedsByClass(scan: scan),
-          const SizedBox(height: AppSpacing.xxl),
-          Text(
-            'AgriSpectra provides preliminary non-destructive seed-quality screening and is '
-            'not a replacement for certified laboratory germination or seed-quality testing.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+        ),
+        ValueListenableBuilder<bool>(
+          valueListenable: _showCondensedHeader,
+          builder: (context, show, child) => IgnorePointer(
+            ignoring: !show,
+            child: AnimatedOpacity(
+              opacity: show ? 1 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: child,
+            ),
           ),
-          const SizedBox(height: AppSpacing.xl),
-        ],
-      ),
+          child: _CondensedScoreHeader(scan: scan),
+        ),
+      ],
     );
   }
 
@@ -198,6 +256,42 @@ class _ResultBody extends ConsumerWidget {
         AssessmentMode.nirOnly => 'NIR-only assessment',
         AssessmentMode.multimodal => 'Multimodal assessment',
       };
+}
+
+/// Slim pinned-feeling summary (score + confidence) that fades in once the
+/// hero block has scrolled out of view, so the number every other stat on
+/// this screen explains stays visible during a long seed-by-seed review.
+class _CondensedScoreHeader extends StatelessWidget {
+  const _CondensedScoreHeader({required this.scan});
+  final Scan scan;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                scan.crop.toUpperCase(),
+                style: Theme.of(context).textTheme.labelSmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            ScoreDisplay(score: scan.batchScore, size: 20),
+            const SizedBox(width: AppSpacing.sm),
+            ConfidenceChip(confidence: scan.confidence),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _BreakdownCard extends StatelessWidget {
@@ -338,48 +432,57 @@ class _SeedsByClass extends StatelessWidget {
     final groups = _groupByClass(scan.results);
     final indexOf = {for (var i = 0; i < scan.results.length; i++) scan.results[i].seedId: i};
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final c in _classDisplayOrder)
-          if (groups[c]?.isNotEmpty ?? false) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.md, bottom: AppSpacing.sm),
-              child: Row(
-                children: [
-                  Container(width: 4, height: 16, color: qualityClassColor(c)),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    '${qualityClassResultLabel(c)} · ${groups[c]!.length}',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: qualityClassColor(c),
-                          fontWeight: FontWeight.w700,
-                        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Target a ~170px card so the grid gains columns on a tablet
+        // instead of two cards stretched across the extra width; capped
+        // at 5 so cards never get too small to read the score at a glance.
+        final crossAxisCount = (constraints.maxWidth / 170).floor().clamp(2, 5);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final c in _classDisplayOrder)
+              if (groups[c]?.isNotEmpty ?? false) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.md, bottom: AppSpacing.sm),
+                  child: Row(
+                    children: [
+                      Container(width: 4, height: 16, color: qualityClassColor(c)),
+                      const SizedBox(width: AppSpacing.sm),
+                      Text(
+                        '${qualityClassResultLabel(c)} · ${groups[c]!.length}',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: qualityClassColor(c),
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: groups[c]!.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: AppSpacing.sm,
-                crossAxisSpacing: AppSpacing.sm,
-                childAspectRatio: 0.78,
-              ),
-              itemBuilder: (context, i) {
-                final result = groups[c]![i];
-                return SeedCard(
-                  result: result,
-                  index: indexOf[result.seedId] ?? 0,
-                  onTap: () => context.push('/scan/result/${scan.scanId}/seed/${result.seedId}'),
-                );
-              },
-            ),
+                ),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: groups[c]!.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: AppSpacing.sm,
+                    crossAxisSpacing: AppSpacing.sm,
+                    childAspectRatio: 0.78,
+                  ),
+                  itemBuilder: (context, i) {
+                    final result = groups[c]![i];
+                    return SeedCard(
+                      result: result,
+                      index: indexOf[result.seedId] ?? 0,
+                      onTap: () => context.push('/scan/result/${scan.scanId}/seed/${result.seedId}'),
+                    );
+                  },
+                ),
+              ],
           ],
-      ],
+        );
+      },
     );
   }
 }
