@@ -31,3 +31,20 @@ frame, and the HUD keys are listed on the start screen.
 The 3D device lives in `lib/device.js`, modelled after the product renders
 (110 × 80 × 75 mm, top button + status LED, light-sealed drawer, ESP32 PCB,
 18650 cell, white LED + AS7265x optical chamber).
+
+## Voice-over cut
+
+`voiceover.py` narrates the clips with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx)
+(open-weights neural TTS, runs offline) and writes one continuous MP4 with
+audio. Each line is placed at its visual beat; a clip whose narration runs
+long holds its last frame. Cue 7 is re-rendered with a time-warp so the
+close lands on the voice:
+
+```bash
+pip install kokoro-onnx soundfile
+# model files from github.com/thewh1teagle/kokoro-onnx/releases (model-files-v1.0),
+# paths via KOKORO_MODEL / KOKORO_VOICES
+node render.mjs 07_close --fps 60 --out 07_close_vo \
+  --warp "0:0,5:5,8:6.3,10.4:7.2,12.9:8.75,13.5:9.6,14.9:10.6,20.3:16"
+python3 voiceover.py am_michael out/AgriSpectra_voiceover_male.mp4   # or af_heart
+```

@@ -14,6 +14,17 @@ const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const fps = +opt('--fps', 30);
 const stills = opt('--still', null);
 const tail = +opt('--tail', 0);
+const outName = opt('--out', scene);
+// --warp "real:scene,real:scene,..." retimes the scene piecewise-linearly
+const knots = opt('--warp', null)?.split(',').map(k => k.split(':').map(Number));
+const warp = t => {
+  if (!knots) return t;
+  for (let i = 1; i < knots.length; i++) {
+    const [r0, s0] = knots[i - 1], [r1, s1] = knots[i];
+    if (t <= r1) return s0 + (s1 - s0) * (t - r0) / (r1 - r0);
+  }
+  return knots[knots.length - 1][1];
+};
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.json': 'application/json' };
 const server = http.createServer((req, res) => {
@@ -35,10 +46,10 @@ page.on('pageerror', e => console.log('[err]', e.message));
 await page.goto(`http://localhost:${port}/scenes/${scene}.html`);
 await page.waitForFunction(() => window.SCENE && (!window.SCENE.ready || window.SCENE.ready()), null, { timeout: 60000 });
 await page.evaluate(() => document.fonts.ready);
-const duration = await page.evaluate(() => window.SCENE.duration);
+const duration = knots ? knots[knots.length - 1][0] : await page.evaluate(() => window.SCENE.duration);
 
 async function frame(t) {
-  await page.evaluate(t => window.SCENE.render(t), t);
+  await page.evaluate(t => window.SCENE.render(t), warp(t));
   return page.screenshot({ type: 'jpeg', quality: 94 });
 }
 
@@ -51,7 +62,7 @@ if (stills) {
   const total = Math.round((duration + tail) * fps);
   const ff = spawn('ffmpeg', ['-y', '-v', 'error', '-f', 'image2pipe', '-framerate', String(fps), '-i', '-',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '15', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-    path.join(root, 'out', `${scene}.mp4`)], { stdio: ['pipe', 'inherit', 'inherit'] });
+    path.join(root, 'out', `${outName}.mp4`)], { stdio: ['pipe', 'inherit', 'inherit'] });
   const t0 = Date.now();
   for (let i = 0; i < total; i++) {
     const buf = await frame(i / fps);
@@ -60,7 +71,7 @@ if (stills) {
   }
   ff.stdin.end();
   await new Promise(r => ff.on('close', r));
-  console.log(`${scene} done: ${total} frames in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  console.log(`${outName} done: ${total} frames in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
 await browser.close();
 server.close();
