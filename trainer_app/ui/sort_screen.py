@@ -10,6 +10,13 @@ import flet as ft
 
 from core import theme
 from sort.phone_import import import_phone_export
+from sort.presorted_import import (
+    BatchExistsError,
+    PresortedPlan,
+    default_presorted_batch_id,
+    import_presorted,
+    scan_presorted_folder,
+)
 from sort.session import SortSession, default_batch_id
 from ui.components import card, class_counts_row, file_picker, section_title
 
@@ -44,6 +51,10 @@ class SortScreen:
         self.one_seed_cb = ft.Checkbox(label="One seed per photo (macro shots)", value=False)
         self.phone_import_text = ft.Text("", size=12, color=theme.INK_FAINT)
         self.phone_import_summary_container = ft.Column(spacing=6)
+        self.presorted_plan: PresortedPlan | None = None
+        self.presorted_batch_field = ft.TextField(label="Batch name", dense=True, width=260)
+        self.presorted_container = ft.Column(spacing=8)
+        self.presorted_progress = ft.ProgressBar(value=0, visible=False, color=theme.ACCENT, bgcolor=theme.SURFACE_ALT)
 
     # ---- lifecycle ------------------------------------------------
 
@@ -100,6 +111,22 @@ class SortScreen:
                     ),
                     self.phone_import_text,
                     self.phone_import_summary_container,
+                    ft.Divider(height=1),
+                    section_title("Or import photos you've already sorted into class folders"),
+                    ft.Text(
+                        "Pick a folder containing one subfolder per class (Good, Damaged, Broken, "
+                        "Shriveled, Impurities). The photos are copied as-is into a new batch — "
+                        "you'll see what goes where before anything is copied.",
+                        size=12,
+                        color=theme.INK_FAINT,
+                    ),
+                    ft.OutlinedButton(
+                        "Choose sorted folder…",
+                        icon=ft.Icons.DRIVE_FOLDER_UPLOAD_OUTLINED,
+                        on_click=self._on_choose_presorted,
+                    ),
+                    self.presorted_container,
+                    self.presorted_progress,
                 ],
             )
         )
@@ -256,6 +283,123 @@ class SortScreen:
         self.phone_import_summary_container.controls = rows
         self._safe_update()
         self._rebuild()
+
+    async def _on_choose_presorted(self, e) -> None:
+        path = await file_picker(self.ctx).get_directory_path(dialog_title="Choose a folder of class subfolders")
+        if not path:
+            return
+        source = Path(path)
+        try:
+            plan = scan_presorted_folder(source)
+        except OSError as exc:
+            self.ctx.notify(f"Couldn't read that folder: {exc}", error=True)
+            return
+        self.presorted_plan = plan
+        self.presorted_batch_field.value = default_presorted_batch_id(
+            Path(self.ctx.config.raw_data_root), self.ctx.crop, source
+        )
+        self._show_presorted_plan(plan)
+
+    def _show_presorted_plan(self, plan: PresortedPlan) -> None:
+        rows: list[ft.Control] = [ft.Text(f"From {plan.source}", size=12, color=theme.INK_MUTED, selectable=True)]
+        if plan.total == 0:
+            rows.append(
+                ft.Text(
+                    "No photos found in recognisable class folders. Expected subfolders named like "
+                    "Good, Damaged, Broken, Shriveled, Impurities.",
+                    size=12,
+                    color=theme.CLASS_COLORS["BROKEN"],
+                )
+            )
+        else:
+            rows.append(class_counts_row(plan.counts))
+        for folder, label in plan.renamed:
+            rows.append(ft.Text(f"“{folder}” → {theme.CLASS_LABELS[label]}", size=11, color=theme.INK_MUTED))
+        if plan.unrecognized_folders:
+            rows.append(
+                ft.Text(
+                    "Skipped — not a known class: " + ", ".join(plan.unrecognized_folders),
+                    size=11,
+                    color=theme.CLASS_COLORS["DAMAGED"],
+                )
+            )
+        if plan.loose_images:
+            rows.append(
+                ft.Text(
+                    f"Skipped {plan.loose_images} photo(s) sitting outside any class folder.",
+                    size=11,
+                    color=theme.CLASS_COLORS["DAMAGED"],
+                )
+            )
+        if plan.skipped_files:
+            rows.append(ft.Text(f"Ignored {plan.skipped_files} non-image file(s).", size=11, color=theme.INK_MUTED))
+        if plan.total:
+            rows.append(
+                ft.Row(
+                    spacing=12,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        self.presorted_batch_field,
+                        ft.FilledButton(
+                            f"Import {plan.total} photos",
+                            icon=ft.Icons.DOWNLOAD_DONE_ROUNDED,
+                            on_click=lambda e: self.ctx.page.run_thread(self._do_import_presorted),
+                            style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF"),
+                        ),
+                    ],
+                )
+            )
+            rows.append(
+                ft.Text(
+                    "One folder = one collection batch. Keep different capture sessions in "
+                    "different batches so Train can hold one out for a leakage-safe test.",
+                    size=11,
+                    color=theme.INK_FAINT,
+                )
+            )
+        self.presorted_container.controls = rows
+        self._safe_update()
+
+    def _do_import_presorted(self) -> None:
+        plan = self.presorted_plan
+        batch_id = (self.presorted_batch_field.value or "").strip()
+        if plan is None or not batch_id:
+            self.ctx.notify("Enter a batch name first.", error=True)
+            return
+
+        self.presorted_progress.visible = True
+        self.presorted_progress.value = 0
+        self._safe_update()
+
+        def on_progress(done: int, total: int) -> None:
+            if done % 10 == 0 or done == total:
+                self.presorted_progress.value = done / total
+                self._safe_update()
+
+        try:
+            copied = import_presorted(plan, Path(self.ctx.config.raw_data_root), self.ctx.crop, batch_id, on_progress)
+        except BatchExistsError as exc:
+            self.presorted_progress.visible = False
+            self.ctx.notify(str(exc), error=True)
+            self._safe_update()
+            return
+        except OSError as exc:
+            self.presorted_progress.visible = False
+            self.ctx.notify(f"Import stopped: {exc}", error=True)
+            self._safe_update()
+            return
+
+        self.presorted_progress.visible = False
+        self.presorted_plan = None
+        self.presorted_container.controls = [
+            ft.Text(
+                f"Imported {sum(copied.values())} photos into batch {batch_id}. They're ready for Train.",
+                size=12,
+                color=theme.CLASS_COLORS["GOOD"],
+            ),
+            class_counts_row(copied),
+        ]
+        self._safe_update()
 
     def _show_triage_summary(self, summary) -> None:
         rejected = self.session.rejected_photos() if self.session else []

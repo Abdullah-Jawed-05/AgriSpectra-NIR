@@ -169,7 +169,23 @@ def build_page(page: ft.Page, config: AppConfig, db: Database) -> AppShell:
     page.title = "AgriSpectra Trainer"
     page.bgcolor = theme.SURFACE
     page.fonts = {}
-    page.theme = ft.Theme(font_family=theme.FONT_FAMILY, color_scheme_seed=theme.ACCENT)
+    # Every surface here is hard-coded light, so pin light mode -- following
+    # a dark OS theme would give default-styled widgets light text on these
+    # light surfaces. Brand colours are set explicitly rather than seeded:
+    # a seed makes Material 3 derive a paler teal, which left outlined
+    # buttons and checkbox labels too faint to notice.
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme = ft.Theme(
+        font_family=theme.FONT_FAMILY,
+        color_scheme=ft.ColorScheme(
+            primary=theme.ACCENT,
+            on_primary="#FFFFFF",
+            on_surface=theme.INK,
+            on_surface_variant=theme.INK_MUTED,
+            outline=theme.ACCENT,
+            surface=theme.SURFACE,
+        ),
+    )
     page.padding = 0
     page.window.width = 1180
     page.window.height = 820

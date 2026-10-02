@@ -11,6 +11,7 @@ from __future__ import annotations
 ACCENT = "#0E6E5D"          # primary teal
 ACCENT_MUTED = "#DCEEE9"
 INK = "#171E1B"
+INK_MUTED = "#54615B"
 INK_FAINT = "#8B968F"
 SURFACE = "#FFFFFF"
 SURFACE_ALT = "#EFF2F0"

@@ -38,6 +38,12 @@ class TrainScreen:
         self.test_batch_dropdown = ft.Dropdown(label="Force test batch (optional)", options=[], width=280)
         self.test_fraction_field = ft.TextField(label="Test fraction", value="0.2", width=140, dense=True)
         self.val_fraction_field = ft.TextField(label="Val fraction", value="0.15", width=140, dense=True)
+        self.one_seed_cb = ft.Checkbox(
+            label="One seed per photo",
+            value=True,
+            tooltip="Keep only the best seed in each photo. Right for Sort Mode crops, phone exports "
+            "and single-seed photos; turn off only for pre-sorted photos with several seeds each.",
+        )
         self.version_label_field = ft.TextField(label="Version label", hint_text="e.g. v1_2026-10-01", width=260, dense=True)
         self.promote_status = ft.Column(spacing=8)
         self.copy_status = ft.Column(spacing=6)
@@ -100,7 +106,7 @@ class TrainScreen:
                             ft.Row(
                                 wrap=True,
                                 spacing=12,
-                                controls=[self.test_fraction_field, self.val_fraction_field, self.test_batch_dropdown],
+                                controls=[self.test_fraction_field, self.val_fraction_field, self.test_batch_dropdown, self.one_seed_cb],
                             )
                         ],
                     ),
@@ -169,6 +175,7 @@ class TrainScreen:
                 test_fraction=test_fraction,
                 val_fraction=val_fraction,
                 test_batch=test_batch,
+                one_seed=bool(self.one_seed_cb.value),
                 on_line=self._append_log,
                 on_progress=lambda stage, frac: None,
                 on_stage_change=lambda stage: self.stepper_row_controls_update(stage, None),

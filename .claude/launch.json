@@ -9,6 +9,15 @@
         "cd app && flutter run -d web-server --web-port 8090 --web-header=Cross-Origin-Opener-Policy=same-origin --web-header=Cross-Origin-Embedder-Policy=require-corp"
       ],
       "port": 8090
+    },
+    {
+      "name": "trainer-web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set FLET_FORCE_WEB_SERVER=true && python trainer_app\\dev_web_preview.py"
+      ],
+      "port": 8551
     }
   ]
 }

@@ -316,3 +316,53 @@ def test_train_screen_preflight_disables_start_when_no_data(config, db):
     screen = TrainScreen(ctx)
     screen.build()
     assert screen.start_button.disabled is True
+
+
+def test_sort_screen_presorted_plan_and_import(config, db, tmp_path):
+    from pathlib import Path
+
+    from sort.presorted_import import scan_presorted_folder
+    from ui.sort_screen import SortScreen
+
+    src = tmp_path / "Barley V4"
+    for folder, n in {"Good": 3, "Impurity": 1}.items():
+        (src / folder).mkdir(parents=True)
+        for i in range(n):
+            (src / folder / f"{i}.jpg").write_bytes(b"x")
+
+    class Ctx:
+        pass
+
+    notes = []
+    ctx = Ctx()
+    ctx.config = config
+    ctx.db = db
+    ctx.crop = "barley"
+    ctx.page = StubPage()
+    ctx.navigate = lambda n: None
+    ctx.notify = lambda msg, **k: notes.append(msg)
+
+    screen = SortScreen(ctx)
+    screen.build()
+    screen.presorted_plan = scan_presorted_folder(src)
+    screen.presorted_batch_field.value = "sorted_barley_v4"
+    screen._show_presorted_plan(screen.presorted_plan)
+
+    def text_of(c) -> str:
+        parts = [str(getattr(c, "value", "") or "")]
+        if isinstance(getattr(c, "content", None), str):
+            parts.append(c.content)
+        for child in getattr(c, "controls", None) or []:
+            parts.append(text_of(child))
+        return " ".join(parts)
+
+    plan_text = text_of(screen.presorted_container)
+    assert "Impurity" in plan_text and "Impurities" in plan_text  # the lenient rename is shown
+
+    screen._do_import_presorted()
+
+    batch = Path(config.raw_data_root) / "barley" / "sorted_barley_v4"
+    assert len(list((batch / "GOOD").iterdir())) == 3
+    assert len(list((batch / "IMPURITIES").iterdir())) == 1
+    assert "Imported 4 photos" in text_of(screen.presorted_container)
+    assert notes == []

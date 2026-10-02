@@ -116,6 +116,7 @@ class PipelineRunner:
         split_seed: int = 42,
         test_batch: Optional[str] = None,
         model_kind: Optional[str] = None,
+        one_seed: bool = True,
         on_line: Optional[OnLine] = None,
         on_progress: Optional[OnProgress] = None,
         on_stage_change: Optional[Callable[[str], None]] = None,
@@ -147,12 +148,20 @@ class PipelineRunner:
         )
         watcher.start()
         try:
+            # One seed per image is the default because every source this app
+            # writes into raw/ is one (Sort Mode crops, phone exports,
+            # single-seed pre-sorted photos). Without it, prepare_dataset
+            # skips any photo where a large non-seed object in frame trips
+            # the pile check, and labels stray specks with the photo's class.
+            prepare_argv = [
+                str(self.config.scripts_dir() / "prepare_dataset.py"),
+                "--raw-dir", str(Path(self.config.raw_data_root)),
+                "--out", str(dataset_dir),
+            ]
+            if one_seed:
+                prepare_argv.append("--one-seed")
             result = run_subprocess(
-                self._argv(
-                    str(self.config.scripts_dir() / "prepare_dataset.py"),
-                    "--raw-dir", str(Path(self.config.raw_data_root)),
-                    "--out", str(dataset_dir),
-                ),
+                self._argv(*prepare_argv),
                 pipeline_dir,
                 "prepare",
                 line_cb,
