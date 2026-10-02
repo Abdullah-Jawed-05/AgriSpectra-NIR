@@ -8,6 +8,7 @@ import '../domain/entities/scan.dart';
 import '../domain/entities/seed_result.dart';
 import '../domain/entities/spectral_measurement.dart';
 import '../domain/value_objects/confidence_level.dart';
+import '../domain/value_objects/germination_reference.dart';
 import '../domain/value_objects/quality_class.dart';
 
 /// Builds a shareable PDF for one completed [Scan] (§40 of the build spec).
@@ -52,6 +53,8 @@ class ScanReportPdf {
           _summaryRow(scan),
           pw.SizedBox(height: 20),
           _breakdownCard(scan),
+          pw.SizedBox(height: 16),
+          _germinationCard(scan),
           pw.SizedBox(height: 16),
           _scoreDistributionCard(scan),
           if (spectral != null) ...[
@@ -231,6 +234,88 @@ class ScanReportPdf {
         ],
       ),
     );
+  }
+
+  /// Expected germination from the barley growth-test rate of each seed's
+  /// class, with the per-class rates it was built from so the figure can be
+  /// checked on the page.
+  static pw.Widget _germinationCard(Scan scan) {
+    final stats = scan.batchStatistics;
+    final expected = stats.expectedGermination;
+    final counts = stats.qualityClassCounts;
+    return _card(
+      title: 'Expected germination',
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(
+                expected == null ? '—' : '${(expected * 100).round()}%',
+                style: pw.TextStyle(
+                  fontSize: 22,
+                  fontWeight: pw.FontWeight.bold,
+                  color: expected == null ? _inkFaint : _germinationColor(expected),
+                ),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 4),
+                child: pw.Text(
+                  stats.isNonViable
+                      ? 'All seeds are broken or shriveled. None of these germinated in growth tests.'
+                      : 'of seeds in this batch are expected to germinate',
+                  style: const pw.TextStyle(color: _inkMuted, fontSize: 9),
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: _divider, width: 0.5)),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(2),
+              1: pw.FlexColumnWidth(1),
+              2: pw.FlexColumnWidth(1.4),
+            },
+            children: [
+              _germinationRow('Class', 'Seeds', 'Growth-test germination', header: true),
+              for (final entry in GerminationReference.barley.entries)
+                _germinationRow(
+                  entry.key.label,
+                  '${counts[entry.key.storageKey] ?? 0}',
+                  '${(entry.value * 100).round()}%',
+                ),
+            ],
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Rates observed in AgriSpectra growth tests of the barley reference set.',
+            style: const pw.TextStyle(color: _inkFaint, fontSize: 7),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.TableRow _germinationRow(String a, String b, String c, {bool header = false}) {
+    final style = pw.TextStyle(
+      fontSize: header ? 8 : 9,
+      color: header ? _inkFaint : _ink,
+      fontWeight: header ? pw.FontWeight.normal : pw.FontWeight.bold,
+    );
+    pw.Widget cell(String text, {bool end = false}) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Text(text, style: style, textAlign: end ? pw.TextAlign.right : pw.TextAlign.left),
+        );
+    return pw.TableRow(children: [cell(a), cell(b, end: true), cell(c, end: true)]);
+  }
+
+  static PdfColor _germinationColor(double rate) {
+    if (rate >= 0.6) return _good;
+    if (rate >= 0.3) return _moderate;
+    return _low;
   }
 
   static pw.Widget _scoreDistributionCard(Scan scan) {

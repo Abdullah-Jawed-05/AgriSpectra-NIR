@@ -317,11 +317,35 @@ limitations" section is required output, not optional polish.
   illustrative shapes, not measurements — see its class doc comment in
   `app/lib/nir/simulated_nir_device.dart`.
 
+## Germination ground truth (barley)
+
+The barley reference classes were growth-tested. Observed germination:
+
+| Class     | Germinated |
+|-----------|------------|
+| Good      | ~75%       |
+| Damaged   | 45%        |
+| Broken    | 0%         |
+| Shriveled | 0%         |
+
+These rates live in `app/lib/domain/value_objects/germination_reference.dart`
+and drive:
+- **Expected germination** on the result screen and in the PDF report: the
+  class-weighted rate over the batch's seeds (impurities excluded).
+- Broken / shriveled seeds score 0 in the batch average (and Model V1 gives
+  them a per-seed score of 0).
+- A batch made up only of broken / shriveled seeds reports a score of 0 and
+  a confidence of 0, with or without an NIR reading.
+
+The figure is only as good as the class assignment underneath it, and the
+V0 rule engine only separates good from damaged — broken / shriveled come
+from Model V1 once it is enabled.
+
 ## Explicit non-claims
 
 AgriSpectra does not, and must not be described as:
 - measuring embryo viability from RGB imagery alone
-- predicting germination without a real lab ground-truth dataset behind it
+- predicting germination beyond the class-level growth-test rates above
 - providing laboratory-grade or certified seed-quality testing
 - resolving the AS7265x's 18 discrete channels into a continuous spectrum
 
