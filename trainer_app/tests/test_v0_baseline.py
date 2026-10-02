@@ -1,14 +1,38 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+
 import pandas as pd
 
-from pipeline.scripts import import_v0_baseline
+from conftest import REPO_ML_DIR
+
+sys.path.insert(0, str(REPO_ML_DIR))
+
+
+def test_v0_baseline_cli_writes_json(tmp_path):
+    """The Trainer runs this as a subprocess in the user's Python (the
+    packaged app has no scikit-learn), so the CLI contract is what matters."""
+    test_csv = tmp_path / "test.csv"
+    pd.DataFrame({"label": ["GOOD", "DAMAGED"], "dark_region_ratio": [0.05, 0.6]}).to_csv(test_csv, index=False)
+    report = tmp_path / "evaluation_report.json"
+    report.write_text(json.dumps({"label_classes": ["DAMAGED", "GOOD"]}))
+    out = tmp_path / "v0_baseline.json"
+
+    proc = subprocess.run(
+        [sys.executable, str(REPO_ML_DIR / "evaluation" / "v0_baseline.py"),
+         "--test", str(test_csv), "--eval-report", str(report), "--out", str(out)],
+        capture_output=True, text=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(out.read_text())
+    assert result["macro_f1"] == 1.0
+    assert "macro-F1" in proc.stdout
 
 
 def test_predict_v0_matches_the_shipped_dart_rule(config):
-    v0 = import_v0_baseline(config)
-    assert v0.evaluate_v0_baseline is not None
-
     from evaluation.v0_baseline import predict_v0
 
     assert predict_v0(0.45) == "DAMAGED"  # above the 0.22 cutoff

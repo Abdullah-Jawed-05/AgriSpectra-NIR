@@ -8,8 +8,13 @@ import pytest
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 
-from promote.export import copy_promoted_to, promote_model
-from promote.fallback_codegen import export_forest_to_dart
+import sys
+
+from conftest import REPO_ML_DIR
+from promote.export import PromoteFailed, copy_promoted_to, promote_model
+
+sys.path.insert(0, str(REPO_ML_DIR / "export"))
+from dart_fallback_codegen import export_forest_to_dart  # noqa: E402
 
 
 @pytest.fixture
@@ -31,10 +36,10 @@ def trained_model_dir(tmp_path):
     return model_dir, model, x
 
 
-def test_promote_model_m2cgen_path(tmp_path, trained_model_dir):
+def test_promote_model_m2cgen_path(tmp_path, config, trained_model_dir):
     model_dir, _model, _x = trained_model_dir
     export_root = tmp_path / "export"
-    result = promote_model(model_dir, export_root, run_id="r1", version_label="t1")
+    result = promote_model(config, model_dir, export_root, run_id="r1", version_label="t1")
 
     assert result.method == "m2cgen"
     assert result.generated_dart_path.is_file()
@@ -49,11 +54,16 @@ def test_promote_model_m2cgen_path(tmp_path, trained_model_dir):
     feature_cols = json.loads((result.export_dir / "feature_columns.json").read_text())
     assert feature_cols == result.feature_columns
 
+    # Dart requires UTF-8 source; Windows' default encoding wrote the header's
+    # em dash as byte 0x97, which Dart flags as an invalid UTF-8 sequence.
+    for path in (result.generated_dart_path, result.adapter_dart_path):
+        path.read_bytes().decode("utf-8")  # raises if not valid UTF-8
 
-def test_copy_promoted_to_copies_both_dart_files(tmp_path, trained_model_dir):
+
+def test_copy_promoted_to_copies_both_dart_files(tmp_path, config, trained_model_dir):
     model_dir, _model, _x = trained_model_dir
     export_root = tmp_path / "export"
-    result = promote_model(model_dir, export_root, run_id="r1", version_label="t1")
+    result = promote_model(config, model_dir, export_root, run_id="r1", version_label="t1")
 
     destination = tmp_path / "app_lib_ml"
     copied = copy_promoted_to(result.export_dir, destination)
@@ -93,3 +103,21 @@ def test_fallback_codegen_matches_sklearn_predict(trained_model_dir):
         mismatches += fallback_pred != sklearn_pred
 
     assert mismatches == 0
+
+
+def test_promote_runs_in_the_configured_python_not_in_process(tmp_path, config, trained_model_dir):
+    """Regression: the packaged Trainer has no scikit-learn, so unpickling
+    model.joblib in-process failed ("No module named 'sklearn'"). Promote
+    must go through config.python_exe; a bad interpreter must fail cleanly."""
+    model_dir, _model, _x = trained_model_dir
+    config.python_exe = str(tmp_path / "no_such_python.exe")
+    with pytest.raises(PromoteFailed):
+        promote_model(config, model_dir, tmp_path / "export", run_id="r1")
+
+
+def test_promote_surfaces_script_errors(tmp_path, config):
+    empty_model_dir = tmp_path / "model"
+    empty_model_dir.mkdir()
+    with pytest.raises(PromoteFailed) as exc:
+        promote_model(config, empty_model_dir, tmp_path / "export", run_id="r1")
+    assert "model.joblib" in str(exc.value)

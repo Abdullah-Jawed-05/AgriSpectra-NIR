@@ -210,9 +210,11 @@ recorded in [`VALIDATION.md`](VALIDATION.md)), the path to the phone is now
 mostly built — driven from the AgriSpectra Trainer (`trainer_app/`, spec in
 [`TRAINER_APP_BUILD_PROMPT.md`](TRAINER_APP_BUILD_PROMPT.md)):
 
-1. **Promote to App** converts `model.joblib` (LightGBM or RandomForest,
-   whichever `train_baseline.py` produced) into dependency-free Dart via
-   `m2cgen` — no ONNX/TFLite runtime needed for a classical model. It
+1. **Promote to App** runs `ml/export/export_dart.py` (in the same Python
+   that trained the model, so the pickle's scikit-learn/LightGBM version
+   matches) to convert `model.joblib` (LightGBM or RandomForest, whichever
+   `train_baseline.py` produced) into dependency-free Dart via `m2cgen` —
+   no ONNX/TFLite runtime needed for a classical model. It
    writes `model_v1_generated.dart` + `agrispectra_model_v1_adapter.dart`
    (which stamps `modelV1Available = true`). **Copy to app** drops them into
    `app/lib/ml/`, replacing same-named placeholders.

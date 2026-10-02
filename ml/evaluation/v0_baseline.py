@@ -61,3 +61,29 @@ def evaluate_v0_baseline(test_df: pd.DataFrame, label_classes: list[str]) -> dic
         "out_of_scope_classes": out_of_scope,
         "scope_note": scope_note,
     }
+
+
+def main() -> None:
+    """CLI so the Trainer can run this in the user's own Python (which has
+    scikit-learn) rather than inside its packaged executable (which doesn't).
+
+        python v0_baseline.py --test split/test.csv --eval-report eval/evaluation_report.json --out eval/v0_baseline.json
+    """
+    import argparse
+    import json
+    from pathlib import Path
+
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument("--test", required=True, type=Path)
+    ap.add_argument("--eval-report", required=True, type=Path, help="evaluate_model.py's report, for the label set")
+    ap.add_argument("--out", required=True, type=Path)
+    args = ap.parse_args()
+
+    label_classes = json.loads(args.eval_report.read_text())["label_classes"]
+    result = evaluate_v0_baseline(pd.read_csv(args.test), label_classes)
+    args.out.write_text(json.dumps(result, indent=2))
+    print(f"V0 baseline on the same test set: macro-F1 {result['macro_f1']:.3f}")
+
+
+if __name__ == "__main__":
+    main()

@@ -15,10 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-import pandas as pd
-
 from core.config import AppConfig
-from pipeline.scripts import import_v0_baseline
 
 OnLine = Callable[[str, str], None]  # (stage_name, line)
 OnProgress = Callable[[str, float], None]  # (stage_name, 0..1)
@@ -237,18 +234,31 @@ class PipelineRunner:
         evaluation_report = json.loads((eval_dir / "evaluation_report.json").read_text())
         confusion_matrix = _read_confusion_matrix(eval_dir / "confusion_matrix.csv")
 
-        # --- V0 baseline comparison (in-process, no subprocess) -----------
+        # --- V0 baseline comparison ---------------------------------------
         # Not a pipeline "stage" in its own right (no separate stepper
         # entry) -- just a same-test-set comparison so "did V1 beat V0"
-        # is a number on the results dashboard instead of manual analysis
-        # against docs/VALIDATION.md. Never fails the run: a problem here
-        # only means the comparison is unavailable, not that training failed.
+        # is a number on the results dashboard. Runs as a subprocess in the
+        # user's Python like the four stages: it needs scikit-learn, which
+        # the packaged Trainer doesn't bundle. Never fails the run: a
+        # problem here only means the comparison is unavailable.
         v0_baseline = None
+        v0_out = eval_dir / "v0_baseline.json"
         try:
-            v0 = import_v0_baseline(self.config)
-            test_df = pd.read_csv(split_dir / "test.csv")
-            v0_baseline = v0.evaluate_v0_baseline(test_df, evaluation_report["label_classes"])
-            line_cb("evaluate", f"V0 baseline on the same test set: macro-F1 {v0_baseline['macro_f1']:.3f}")
+            v0_result = run_subprocess(
+                self._argv(
+                    str(self.config.evaluation_dir() / "v0_baseline.py"),
+                    "--test", str(split_dir / "test.csv"),
+                    "--eval-report", str(eval_dir / "evaluation_report.json"),
+                    "--out", str(v0_out),
+                ),
+                pipeline_dir,
+                "evaluate",
+                line_cb,
+            )
+            if v0_result.returncode == 0 and v0_out.is_file():
+                v0_baseline = json.loads(v0_out.read_text())
+            else:
+                line_cb("evaluate", "V0 baseline comparison skipped: see the error above.")
         except Exception as exc:  # noqa: BLE001
             line_cb("evaluate", f"V0 baseline comparison skipped: {exc}")
 

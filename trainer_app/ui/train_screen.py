@@ -313,7 +313,13 @@ class TrainScreen:
     def _do_promote(self, run_id: str) -> None:
         run = self.ctx.db.get_run(run_id)
         try:
-            result = promote_model(Path(run["model_dir"]), Path(self.ctx.config.export_root), run_id, self.version_label_field.value or None)
+            result = promote_model(
+                self.ctx.config,
+                Path(run["model_dir"]),
+                Path(self.ctx.config.export_root),
+                run_id,
+                self.version_label_field.value or None,
+            )
         except Exception as exc:  # noqa: BLE001
             self.ctx.notify(f"Promote failed: {exc}", error=True)
             return
