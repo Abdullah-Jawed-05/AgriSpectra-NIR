@@ -13,10 +13,21 @@
 <body>
 <video id="a" playsinline preload="auto"></video>
 <video id="b" playsinline preload="auto"></video>
-<div id="start"><div><b>AgriSpectra · stage video</b>Press F for fullscreen, then → / Space / clicker to start cue 1.<br>← back · R replay cue · 1–7 jump · B black screen · H show cue number</div></div>
+<div id="start"><div><b>AgriSpectra · stage video</b>Keep the 7 MP4s in the same folder as this file. Press F for fullscreen, then → / Space / clicker to start cue 1.<br>← back · R replay cue · 1–7 jump · B black screen · H show cue number</div></div>
 <div id="hud"></div>
 <script>
-const CLIPS = ['clips/01_problem.mp4', 'clips/02_scale.mp4', 'clips/03_app.mp4', 'clips/04_race.mp4', 'clips/05_inside.mp4', 'clips/06_device.mp4', 'clips/07_close.mp4'];
+// The MP4s can sit right next to this file, or inside a folder named "clips".
+const CLIPS = ['01_problem.mp4', '02_scale.mp4', '03_app.mp4', '04_race.mp4', '05_inside.mp4', '06_device.mp4', '07_close.mp4'];
+function load(v, name) {
+  return new Promise((ok, fail) => {
+    const tryAt = (src, next) => {
+      v.onerror = () => next ? tryAt(next, null) : fail(new Error('missing ' + name));
+      v.oncanplay = () => { v.onerror = v.oncanplay = null; ok(); };
+      v.src = src; v.load();
+    };
+    tryAt(name, 'clips/' + name);
+  });
+}
 const vids = [document.getElementById('a'), document.getElementById('b')];
 let front = 0, idx = -1, black = false;
 
@@ -26,14 +37,14 @@ function go(i) {
   document.getElementById('start').style.display = 'none';
   black = false;
   const next = vids[1 - front], cur = vids[front];
-  next.src = CLIPS[i];
-  next.currentTime = 0;
-  next.play().then(() => {
+  load(next, CLIPS[i]).then(() => { next.currentTime = 0; return next.play(); }).then(() => {
     next.classList.add('on'); cur.classList.remove('on');
     setTimeout(() => { cur.pause(); }, 400);
     front = 1 - front; idx = i; hud();
     // warm the cache for the following clip
-    if (i + 1 < CLIPS.length) fetch(CLIPS[i + 1]).catch(() => {});
+  }).catch(err => {
+    document.getElementById('start').style.display = 'grid';
+    document.getElementById('start').innerHTML = `<div><b>Can't find ${CLIPS[i]}</b>Put all seven MP4 files in the same folder as player.html.</div>`;
   });
 }
 // a finished clip simply stays on its last frame (no loop), which is the hold

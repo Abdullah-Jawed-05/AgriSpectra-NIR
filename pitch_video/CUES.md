@@ -1,6 +1,6 @@
 # AgriSpectra: stage script and video cues
 
-Open `player.html` in Chrome on the presentation laptop and press **F** for fullscreen.
+Put `player.html` and the seven MP4 files together in one folder, open `player.html` in Chrome on the presentation laptop, and press **F** for fullscreen.
 Each click (→, Space, Page Down, or a presenter clicker) starts the next clip. A clip plays
 its animation and then **holds on its last frame** until you click again, so
 you set the pace and never have to chase the video.

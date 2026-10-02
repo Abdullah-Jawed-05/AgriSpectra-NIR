@@ -14,7 +14,7 @@ node render.mjs 06_device --fps 60          # -> out/06_device.mp4
 Set `CHROME_PATH` if Chromium isn't at the default path. Open
 `scenes/<name>.html?play` through any static server to preview a scene live.
 
-For the show, put the rendered MP4s in `clips/` next to `player.html` and open
+For the show, put the rendered MP4s in the same folder as `player.html` and open
 it in Chrome: → / Space / clicker advances a cue, each clip holds on its last
 frame, and the HUD keys are listed on the start screen.
 
