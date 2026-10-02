@@ -185,7 +185,7 @@ collection" section.
 
 - [`README.md`](../README.md) — install & run instructions
 - [`ML_PIPELINE.md`](ML_PIPELINE.md) — Python training repo
-- [`NIR_PROTOCOL.md`](NIR_PROTOCOL.md) — BLE GATT spec
+- [`nir_protocol/protocol.md`](../nir_protocol/protocol.md) — BLE GATT spec
 - [`DATASET_GUIDE.md`](DATASET_GUIDE.md) — labeling, splitting, versioning
 - [`VALIDATION.md`](VALIDATION.md) — known limitations, what's been tested
 - [`ROADMAP.md`](ROADMAP.md) — the table in §8, expanded
