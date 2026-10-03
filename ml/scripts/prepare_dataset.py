@@ -34,6 +34,7 @@ Separating it from per-seed quality aggregation is the app's job
 
 Usage:
     python prepare_dataset.py --raw-dir raw/ --out dataset_v0.1/
+    python prepare_dataset.py --raw-dir raw/ --out ds/ --crop barley --batch lot1 --batch lot3
 """
 
 from __future__ import annotations
@@ -93,7 +94,17 @@ def main() -> None:
         help="only process raw/<crop>/ (default: every crop folder). Mixing crops would "
         "train one model on several kinds of seed, which is never what you want.",
     )
+    parser.add_argument(
+        "--batch",
+        dest="batches",
+        action="append",
+        default=None,
+        metavar="BATCH_ID",
+        help="only process this batch folder (repeatable; default: every batch). A crop "
+        "without batch folders is the single batch '<crop>_unbatched'.",
+    )
     args = parser.parse_args()
+    wanted_batches = set(args.batches) if args.batches else None
 
     if not args.raw_dir.exists():
         raise SystemExit(
@@ -123,6 +134,9 @@ def main() -> None:
         if not crop_dirs:
             raise SystemExit(f"No folder for crop '{args.crop}' under {args.raw_dir}.")
 
+    # Discover every crop's batches before reading any image, so a bad
+    # --batch name fails immediately instead of after a full pass.
+    plan: list[tuple[str, list[tuple[str, list[Path]]]]] = []
     for crop_dir in crop_dirs:
         crop_name = crop_dir.name
         subdirs = sorted(p for p in crop_dir.iterdir() if p.is_dir())
@@ -138,7 +152,16 @@ def main() -> None:
             print(f"[{crop_name}] no batch folders found — treating all images as one implicit batch.")
         else:
             batches = [(batch_dir.name, sorted(p for p in batch_dir.iterdir() if p.is_dir())) for batch_dir in subdirs]
+        plan.append((crop_name, batches))
 
+    if wanted_batches is not None:
+        found = {batch_id for _, batches in plan for batch_id, _ in batches}
+        if wanted_batches - found:
+            raise SystemExit(f"Batch folder(s) not found: {', '.join(sorted(wanted_batches - found))}")
+        plan = [(crop_name, [(b, dirs) for b, dirs in batches if b in wanted_batches]) for crop_name, batches in plan]
+        print(f"Using {len(wanted_batches)} selected batch(es): {', '.join(sorted(wanted_batches))}")
+
+    for crop_name, batches in plan:
         for batch_id, label_dirs in batches:
             for label_dir in label_dirs:
                 label = normalize_label(label_dir.name)

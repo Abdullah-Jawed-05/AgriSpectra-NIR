@@ -114,6 +114,7 @@ class PipelineRunner:
         test_batch: Optional[str] = None,
         model_kind: Optional[str] = None,
         one_seed: bool = True,
+        batches: Optional[list[str]] = None,
         on_line: Optional[OnLine] = None,
         on_progress: Optional[OnProgress] = None,
         on_stage_change: Optional[Callable[[str], None]] = None,
@@ -136,7 +137,12 @@ class PipelineRunner:
 
         # --- Stage 1: prepare_dataset.py --------------------------------
         self._stage(on_stage_change, "prepare")
-        total_images = _count_images(raw_crop_dir)
+        if batches is not None and not batches:
+            raise StageFailed("prepare", 0, "No batches selected to train on.")
+        if batches is None or any(not (raw_crop_dir / b).is_dir() for b in batches):
+            total_images = _count_images(raw_crop_dir)  # no selection, or the implicit "<crop>_unbatched"
+        else:
+            total_images = sum(_count_images(raw_crop_dir / b) for b in batches)
         stop = threading.Event()
         watcher = threading.Thread(
             target=_watch_output_dir,
@@ -158,6 +164,8 @@ class PipelineRunner:
             ]
             if one_seed:
                 prepare_argv.append("--one-seed")
+            for batch_id in batches or []:
+                prepare_argv += ["--batch", batch_id]
             result = run_subprocess(
                 self._argv(*prepare_argv),
                 pipeline_dir,

@@ -86,6 +86,9 @@ _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN v0_baseline_json TEXT",
     # Runs from before crops were selectable were all barley.
     "ALTER TABLE runs ADD COLUMN crop TEXT NOT NULL DEFAULT 'barley'",
+    # JSON list of the batch folders a run trained on; NULL for runs from
+    # before batches were selectable (they used every batch).
+    "ALTER TABLE runs ADD COLUMN batches_json TEXT",
 ]
 
 
@@ -289,12 +292,13 @@ class Database:
 
     # ---- training runs -------------------------------------------------
 
-    def create_run(self, work_dir: str, crop: str = "barley") -> str:
+    def create_run(self, work_dir: str, crop: str = "barley", batches: Optional[list[str]] = None) -> str:
         run_id = new_id()
         with self.cursor() as cur:
             cur.execute(
-                "INSERT INTO runs (id, created_at, status, work_dir, crop) VALUES (?, ?, 'running', ?, ?)",
-                (run_id, time.time(), work_dir, crop),
+                "INSERT INTO runs (id, created_at, status, work_dir, crop, batches_json) "
+                "VALUES (?, ?, 'running', ?, ?, ?)",
+                (run_id, time.time(), work_dir, crop, json.dumps(batches) if batches is not None else None),
             )
         return run_id
 

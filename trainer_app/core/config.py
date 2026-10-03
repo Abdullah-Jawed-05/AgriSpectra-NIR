@@ -109,6 +109,26 @@ class AppConfig:
     app_lib_ml_dir: str = field(default_factory=_discover_app_lib_ml_dir)
     flutter_exe: str = field(default_factory=_discover_flutter_exe)
     crop: str = "barley"  # the crop (kind of seed) being worked on; see core/crops.py
+    # Batches left out of training, per crop: {crop: [batch_id, ...]}.
+    # Stored as exclusions so a newly sorted batch is used by default.
+    excluded_batches: dict = field(default_factory=dict)
+
+    def excluded_batches_for(self, crop: str) -> list[str]:
+        value = self.excluded_batches.get(crop) if isinstance(self.excluded_batches, dict) else None
+        return [b for b in value if isinstance(b, str)] if isinstance(value, list) else []
+
+    def set_batch_included(self, crop: str, batch_id: str, included: bool) -> None:
+        if not isinstance(self.excluded_batches, dict):
+            self.excluded_batches = {}
+        excluded = set(self.excluded_batches_for(crop))
+        if included:
+            excluded.discard(batch_id)
+        else:
+            excluded.add(batch_id)
+        if excluded:
+            self.excluded_batches[crop] = sorted(excluded)
+        else:
+            self.excluded_batches.pop(crop, None)
 
     def ensure_dirs(self) -> None:
         for p in (self.raw_data_root, self.models_root, self.work_root, self.export_root):

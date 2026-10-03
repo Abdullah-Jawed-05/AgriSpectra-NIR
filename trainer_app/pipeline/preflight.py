@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterable
 
 VALID_LABELS = {"GOOD", "DAMAGED", "BROKEN", "SHRIVELED", "IMPURITIES", "UNKNOWN"}
 
@@ -25,9 +26,26 @@ EST_TRAIN_EVAL_SECONDS = 20
 
 
 @dataclass
+class BatchInfo:
+    """One batch folder that has photos, whether or not it's selected."""
+
+    batch_id: str
+    class_counts: dict[str, int]
+    included: bool
+
+    @property
+    def n_images(self) -> int:
+        return sum(self.class_counts.values())
+
+
+@dataclass
 class PreflightSummary:
+    """Totals and warnings cover only the *included* batches -- what a run
+    would actually train on. `batches` lists every batch with photos."""
+
     class_counts: dict[str, int] = field(default_factory=dict)
-    batch_ids: list[str] = field(default_factory=list)
+    batch_ids: list[str] = field(default_factory=list)  # included batches
+    batches: list[BatchInfo] = field(default_factory=list)
     total_images: int = 0
     warnings: list[str] = field(default_factory=list)
 
@@ -54,7 +72,8 @@ def _normalize_label(name: str) -> str:
     return re.sub(r"[\s-]+", "_", name.strip()).upper()
 
 
-def scan_raw_data(raw_data_root: Path, crop: str) -> PreflightSummary:
+def scan_raw_data(raw_data_root: Path, crop: str, excluded_batches: Iterable[str] = ()) -> PreflightSummary:
+    excluded = set(excluded_batches)
     summary = PreflightSummary()
     crop_dir = raw_data_root / crop
     if not crop_dir.is_dir():
@@ -73,22 +92,31 @@ def scan_raw_data(raw_data_root: Path, crop: str) -> PreflightSummary:
 
     image_exts = {".jpg", ".jpeg", ".png"}
     for batch_id, label_dirs in batches:
-        batch_has_images = False
+        counts: dict[str, int] = {}
         for label_dir in label_dirs:
             label = _normalize_label(label_dir.name)
             if label not in VALID_LABELS:
                 continue
             n = sum(1 for p in label_dir.iterdir() if p.suffix.lower() in image_exts)
-            if n == 0:
-                continue
-            batch_has_images = True
+            if n:
+                counts[label] = counts.get(label, 0) + n
+        if not counts:
+            continue
+        info = BatchInfo(batch_id, counts, included=batch_id not in excluded)
+        summary.batches.append(info)
+        if not info.included:
+            continue
+        summary.batch_ids.append(batch_id)
+        for label, n in counts.items():
             summary.class_counts[label] = summary.class_counts.get(label, 0) + n
-            summary.total_images += n
-        if batch_has_images:
-            summary.batch_ids.append(batch_id)
+        summary.total_images += info.n_images
 
-    if not summary.class_counts:
+    if not summary.batches:
         summary.warnings.append("No labelled photos found under any recognized class folder.")
+        return summary
+
+    if not summary.batch_ids:
+        summary.warnings.append("No batches are selected. Tick at least one batch to train on.")
         return summary
 
     if len(summary.class_counts) < 2:
@@ -98,7 +126,7 @@ def scan_raw_data(raw_data_root: Path, crop: str) -> PreflightSummary:
 
     if summary.n_batches < 2:
         summary.warnings.append(
-            "Only 1 collection batch exists. The train/test split cannot hold out a whole "
+            "Only 1 collection batch is selected. The train/test split cannot hold out a whole "
             "session, so the test metrics will NOT be leakage-safe — treat them as a sanity "
             "check only, not a generalization estimate."
         )

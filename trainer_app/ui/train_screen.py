@@ -14,7 +14,7 @@ from pipeline.preflight import scan_raw_data
 from pipeline.runner import PipelineRunner, StageFailed
 from promote.activate import PredictorFileError, build_apk, enable_model_v1, install_apk, list_connected_devices
 from promote.export import copy_promoted_to, promote_model
-from ui.components import card, class_counts_row, confusion_matrix_grid, leakage_badge, pipeline_stepper, section_title, stat_tile
+from ui.components import card, class_counts_row, confusion_matrix_grid, leakage_badge, pipeline_stepper, section_title, stat_tile, trained_on_text
 
 STAGES = ["prepare", "split", "train", "evaluate"]
 MAX_LOG_LINES = 400
@@ -35,7 +35,16 @@ class TrainScreen:
         self.log_view = ft.Column(spacing=1, scroll=ft.ScrollMode.AUTO, height=220)
         self.log_expansion = ft.ExpansionTile(title=ft.Text("Live log"), controls=[ft.Container(content=self.log_view, bgcolor="#0B1210", border_radius=8, padding=10)])
         self.results_panel = ft.Container(visible=False)
-        self.start_button = ft.FilledButton("Start training run", icon=ft.Icons.PLAY_ARROW_ROUNDED, style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF"))
+        self.start_button = ft.FilledButton(
+            "Start training run",
+            icon=ft.Icons.PLAY_ARROW_ROUNDED,
+            # A plain bgcolor would also paint the disabled state, making a
+            # dead button look clickable.
+            style=ft.ButtonStyle(
+                bgcolor={ft.ControlState.DISABLED: theme.SURFACE_ALT, ft.ControlState.DEFAULT: theme.ACCENT},
+                color={ft.ControlState.DISABLED: theme.INK_FAINT, ft.ControlState.DEFAULT: "#FFFFFF"},
+            ),
+        )
         self.test_batch_dropdown = ft.Dropdown(label="Force test batch (optional)", options=[], width=280)
         self.test_fraction_field = ft.TextField(label="Test fraction", value="0.2", width=140, dense=True)
         self.val_fraction_field = ft.TextField(label="Val fraction", value="0.15", width=140, dense=True)
@@ -67,9 +76,81 @@ class TrainScreen:
 
     # ---- pre-flight -----------------------------------------------------
 
+    def _scan(self):
+        return scan_raw_data(
+            Path(self.ctx.config.raw_data_root),
+            self.ctx.crop,
+            self.ctx.config.excluded_batches_for(self.ctx.crop),
+        )
+
+    def _set_batches_included(self, batch_ids: list[str], included: bool) -> None:
+        if self.running:
+            return
+        for batch_id in batch_ids:
+            self.ctx.config.set_batch_included(self.ctx.crop, batch_id, included)
+        try:
+            self.ctx.config.save()
+        except OSError as exc:
+            self.ctx.notify(f"Couldn't save the batch selection: {exc}", error=True)
+        self._rebuild_preflight()
+
+    def _batch_picker(self, summary) -> ft.Control:
+        if not summary.batches:
+            return ft.Container()
+        all_ids = [b.batch_id for b in summary.batches]
+
+        def row(info) -> ft.Control:
+            breakdown = " · ".join(f"{label.title()} {n}" for label, n in sorted(info.class_counts.items()))
+            return ft.Row(
+                spacing=4,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Checkbox(
+                        value=info.included,
+                        disabled=self.running,
+                        on_change=lambda e, b=info.batch_id: self._set_batches_included([b], bool(e.control.value)),
+                    ),
+                    ft.Column(
+                        spacing=0,
+                        expand=True,
+                        controls=[
+                            ft.Text(info.batch_id, size=13, weight=ft.FontWeight.W_600,
+                                    color=theme.INK if info.included else theme.INK_FAINT),
+                            ft.Text(f"{info.n_images} photos  ·  {breakdown}", size=11, color=theme.INK_MUTED),
+                        ],
+                    ),
+                ],
+            )
+
+        n_on = len(summary.batch_ids)
+        return ft.Column(
+            spacing=4,
+            controls=[
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    controls=[
+                        ft.Text(f"Batches to train on ({n_on} of {len(all_ids)})", size=14,
+                                weight=ft.FontWeight.W_600, color=theme.INK),
+                        ft.Row(
+                            spacing=0,
+                            controls=[
+                                ft.TextButton("All", disabled=self.running,
+                                              on_click=lambda e: self._set_batches_included(all_ids, True)),
+                                ft.TextButton("None", disabled=self.running,
+                                              on_click=lambda e: self._set_batches_included(all_ids, False)),
+                            ],
+                        ),
+                    ],
+                ),
+                *[row(b) for b in summary.batches],
+            ],
+        )
+
     def _rebuild_preflight(self) -> None:
-        summary = scan_raw_data(Path(self.ctx.config.raw_data_root), self.ctx.crop)
+        summary = self._scan()
         self.test_batch_dropdown.options = [ft.DropdownOption(key=b, text=b) for b in summary.batch_ids]
+        if self.test_batch_dropdown.value not in summary.batch_ids:
+            self.test_batch_dropdown.value = None
 
         warnings = ft.Column(
             spacing=6,
@@ -91,11 +172,14 @@ class TrainScreen:
                 spacing=14,
                 controls=[
                     section_title("Pre-flight"),
-                    class_counts_row(summary.class_counts) if summary.class_counts else ft.Text("No labelled data yet.", color=theme.INK_FAINT),
+                    self._batch_picker(summary),
+                    class_counts_row(summary.class_counts)
+                    if summary.class_counts
+                    else ft.Text("No labelled data yet." if not summary.batches else "", color=theme.INK_FAINT),
                     ft.Row(
                         spacing=12,
                         controls=[
-                            stat_tile("Collection batches", str(summary.n_batches)),
+                            stat_tile("Selected batches", str(summary.n_batches)),
                             stat_tile("Total labelled seeds", str(sum(summary.class_counts.values()))),
                             stat_tile("Est. run time", f"~{minutes:.1f} min"),
                         ],
@@ -122,7 +206,15 @@ class TrainScreen:
     def _on_start(self, e) -> None:
         if self.running:
             return
+        # Re-scan rather than trust what's on screen: folders may have
+        # changed since the panel was drawn.
+        summary = self._scan()
+        if not summary.is_ready:
+            self._rebuild_preflight()
+            return
+        batches = list(summary.batch_ids)
         self.running = True
+        self._rebuild_preflight()  # lock the batch checkboxes for the run
         self.failed_stage = None
         self.log_lines = []
         self.log_view.controls = []
@@ -138,7 +230,7 @@ class TrainScreen:
             test_fraction, val_fraction = 0.2, 0.15
 
         test_batch = self.test_batch_dropdown.value or None
-        self.ctx.page.run_thread(self._do_run, test_fraction, val_fraction, test_batch)
+        self.ctx.page.run_thread(self._do_run, test_fraction, val_fraction, test_batch, batches)
 
     def _rebuild_run_panel(self) -> None:
         self.run_panel.content = card(
@@ -164,8 +256,15 @@ class TrainScreen:
         self.stepper_row.controls = new_row.controls
         self._safe_update()
 
-    def _do_run(self, test_fraction: float, val_fraction: float, test_batch: str | None) -> None:
-        row_id = self.ctx.db.create_run("", crop=self.ctx.crop)
+    def _do_run(self, test_fraction: float, val_fraction: float, test_batch: str | None, batches: list[str]) -> None:
+        try:
+            self._run_pipeline(test_fraction, val_fraction, test_batch, batches)
+        finally:
+            self.running = False
+            self._rebuild_preflight()  # unlock the batch checkboxes / Start button
+
+    def _run_pipeline(self, test_fraction: float, val_fraction: float, test_batch: str | None, batches: list[str]) -> None:
+        row_id = self.ctx.db.create_run("", crop=self.ctx.crop, batches=batches)
         self.current_run_id = row_id
         self.ctx.db.set_work_dir(row_id, str(Path(self.ctx.config.work_root) / "runs" / row_id))
 
@@ -177,6 +276,7 @@ class TrainScreen:
                 val_fraction=val_fraction,
                 test_batch=test_batch,
                 one_seed=bool(self.one_seed_cb.value),
+                batches=batches,
                 on_line=self._append_log,
                 on_progress=lambda stage, frac: None,
                 on_stage_change=lambda stage: self.stepper_row_controls_update(stage, None),
@@ -291,6 +391,7 @@ class TrainScreen:
                             stat_tile("Batches", str(run["n_batches"])),
                         ],
                     ),
+                    ft.Text(trained_on_text(run), size=12, color=theme.INK_MUTED),
                     delta_control,
                     v0_control,
                     section_title("Confusion matrix"),

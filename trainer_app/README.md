@@ -15,6 +15,12 @@ extraction, or training. Sort Mode imports the real
 `prepare_dataset.py` / `split_dataset.py` / `train_baseline.py` /
 `evaluate_model.py` scripts as unmodified subprocesses.
 
+Train Mode's pre-flight lists every batch folder of the current crop with a
+checkbox. Only ticked batches are trained on (passed to `prepare_dataset.py`
+as `--batch`). Unticked batches are remembered per crop in settings, and
+each run records the batches it used, shown in Results and History.
+Unticking never moves or deletes any photos.
+
 ## Running it from source
 
 ```bash

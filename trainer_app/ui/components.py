@@ -3,6 +3,8 @@ of any single screen's state so Home/Sort/Train can all use them."""
 
 from __future__ import annotations
 
+import json
+
 import flet as ft
 
 from core import theme
@@ -63,6 +65,15 @@ def class_counts_row(counts: dict[str, int]) -> ft.Row:
         run_spacing=8,
         controls=[class_chip(label, counts.get(label, 0)) for label in theme.CLASS_ORDER if label in counts or True],
     )
+
+
+def trained_on_text(run) -> str:
+    """Which batch folders a run used, for Results and History."""
+    raw = run["batches_json"] if "batches_json" in run.keys() else None
+    batches = json.loads(raw) if raw else None
+    if not batches:
+        return "Trained on: every batch (recorded before batches could be chosen)"
+    return f"Trained on {len(batches)} batch{'es' if len(batches) != 1 else ''}: {', '.join(batches)}"
 
 
 def section_title(text: str) -> ft.Text:

@@ -9,7 +9,7 @@ import flet as ft
 
 from core import theme
 from core.crops import crop_label
-from ui.components import card, confusion_matrix_grid, leakage_badge
+from ui.components import card, confusion_matrix_grid, leakage_badge, trained_on_text
 
 
 class HistoryScreen:
@@ -85,6 +85,7 @@ class HistoryScreen:
                                         size=12,
                                         color=theme.INK_FAINT,
                                     ),
+                                    ft.Text(trained_on_text(run), size=12, color=theme.INK_FAINT),
                                     confusion_matrix_grid(confusion, label_classes),
                                 ],
                             )
