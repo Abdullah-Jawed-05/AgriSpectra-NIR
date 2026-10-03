@@ -35,7 +35,7 @@ class PromoteResult:
     readme_path: Path
     feature_columns: list[str]
     label_classes: list[str]
-    method: str  # "m2cgen" or "fallback_tree"
+    method: str  # "tree_functions" (scikit-learn forests) or "m2cgen" (other models)
 
 
 def promote_model(

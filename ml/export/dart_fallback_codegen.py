@@ -12,9 +12,11 @@ with the same shape m2cgen's exporters use (one weight per class, argmax
 = predicted class), so `promote/export.py`'s adapter needs no changes
 depending on which path generated the file.
 
-Only used as a last resort (§4.5) — a plain `RandomForestClassifier` or
-`ExtraTreesClassifier` already exports cleanly through m2cgen; this path
-exists for the day a model type m2cgen doesn't support shows up.
+This is the *preferred* path for scikit-learn forests, not just a fallback:
+m2cgen emits a whole forest as one giant function, and Flutter's AOT
+compiler (`flutter build apk`) ran out of memory on that for a 300-tree
+model. One small function per tree compiles fine. m2cgen remains the path
+for model types this can't handle (e.g. LightGBM).
 """
 
 from __future__ import annotations
@@ -33,10 +35,12 @@ def _tree_to_dart(tree, node: int, n_classes: int, indent: str) -> str:
         counts = tree.value[node][0]
         total = float(counts.sum()) or 1.0
         vec = ", ".join(repr(float(c) / total) for c in counts)
-        return f"{indent}return [{vec}];\n"
+        return f"{indent}return const [{vec}];\n"  # const: no allocation per call
 
-    feature = tree.feature[node]
-    threshold = tree.threshold[node]
+    # Plain Python int/float first: under NumPy 2, repr() of a NumPy scalar
+    # is "np.float64(0.4)", which would be emitted into the Dart verbatim.
+    feature = int(tree.feature[node])
+    threshold = float(tree.threshold[node])
     out = f"{indent}if (input[{feature}] <= {threshold!r}) {{\n"
     out += _tree_to_dart(tree, left, n_classes, indent + "  ")
     out += f"{indent}}} else {{\n"
@@ -62,12 +66,21 @@ def export_forest_to_dart(model, function_name: str = "score") -> str:
         body = _tree_to_dart(tree, 0, n_classes, "  ")
         parts.append(f"List<double> _tree{i}(List<double> input) {{\n{body}}}\n")
 
-    sums = " + ".join(f"_tree{i}(input)[c]" for i in range(n_trees))
+    # Each tree runs once per prediction and adds its leaf vector. Keeping
+    # every tree in its own small function (rather than one giant function,
+    # as m2cgen emits) is what lets Flutter's AOT compiler handle large
+    # forests: it optimizes per function, and a single 60k-line function
+    # ran it out of memory on a 300-tree model.
+    tree_list = ", ".join(f"_tree{i}" for i in range(n_trees))
     main = (
+        f"const List<List<double> Function(List<double>)> _trees = [{tree_list}];\n\n"
         f"List<double> {function_name}(List<double> input) {{\n"
         f"  final votes = List<double>.filled({n_classes}, 0.0);\n"
-        f"  for (var c = 0; c < {n_classes}; c++) {{\n"
-        f"    votes[c] = {sums};\n"
+        f"  for (final tree in _trees) {{\n"
+        f"    final leaf = tree(input);\n"
+        f"    for (var c = 0; c < {n_classes}; c++) {{\n"
+        f"      votes[c] += leaf[c];\n"
+        f"    }}\n"
         f"  }}\n"
         f"  return votes;\n"
         f"}}\n"

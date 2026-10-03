@@ -41,7 +41,7 @@ def test_promote_model_m2cgen_path(tmp_path, config, trained_model_dir):
     export_root = tmp_path / "export"
     result = promote_model(config, model_dir, export_root, run_id="r1", version_label="t1")
 
-    assert result.method == "m2cgen"
+    assert result.method == "tree_functions"  # RandomForest -> one function per tree
     assert result.generated_dart_path.is_file()
     assert result.adapter_dart_path.is_file()
     assert "List<double> score(List<double> input)" in result.generated_dart_path.read_text()
@@ -121,3 +121,48 @@ def test_promote_surfaces_script_errors(tmp_path, config):
     with pytest.raises(PromoteFailed) as exc:
         promote_model(config, empty_model_dir, tmp_path / "export", run_id="r1")
     assert "model.joblib" in str(exc.value)
+
+
+def test_tree_codegen_emits_plain_dart_literals(trained_model_dir):
+    """Regression: under NumPy 2, repr() of a threshold is "np.float64(0.4)",
+    which was written into the Dart verbatim and failed to compile."""
+    _model_dir, model, _x = trained_model_dir
+    dart = export_forest_to_dart(model)
+    assert "np." not in dart
+    assert dart.count("List<double> _tree") == len(model.estimators_)  # one function per tree
+
+
+@pytest.mark.slow
+def test_generated_dart_compiles_and_matches_sklearn(tmp_path, config, trained_model_dir):
+    """Compiles the real export with the Dart SDK and checks every
+    prediction against scikit-learn. Skipped where Dart isn't installed."""
+    import shutil
+    import subprocess
+
+    dart = shutil.which("dart")
+    if dart is None:
+        pytest.skip("Dart SDK not on PATH")
+
+    model_dir, model, x = trained_model_dir
+    result = promote_model(config, model_dir, tmp_path / "export", run_id="r1")
+    labels = json.loads((model_dir / "label_classes.json").read_text())
+    rows = [{f"f{i}": float(v) for i, v in enumerate(r)} for r in x[:40]]
+    expected = [labels[i] for i in model.predict(x[:40])]
+    (result.export_dir / "parity.json").write_text(json.dumps({"rows": rows, "expected": expected}))
+    (result.export_dir / "parity.dart").write_text(
+        "import 'dart:convert';\nimport 'dart:io';\nimport 'agrispectra_model_v1_adapter.dart';\n"
+        "void main() {\n"
+        "  final d = jsonDecode(File('parity.json').readAsStringSync());\n"
+        "  final rows = (d['rows'] as List).cast<Map<String, dynamic>>();\n"
+        "  final exp = (d['expected'] as List).cast<String>();\n"
+        "  var bad = 0;\n"
+        "  for (var i = 0; i < rows.length; i++) {\n"
+        "    final f = rows[i].map((k, v) => MapEntry(k, (v as num).toDouble()));\n"
+        "    if (predictModelV1(f).label != exp[i]) bad++;\n"
+        "  }\n"
+        "  print('mismatches=$bad');\n"
+        "}\n"
+    )
+    proc = subprocess.run([dart, "run", "parity.dart"], cwd=result.export_dir, capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 0, proc.stderr
+    assert "mismatches=0" in proc.stdout

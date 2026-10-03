@@ -96,16 +96,18 @@ def export_model(model_dir: Path, export_dir: Path, version_label: str) -> dict:
     label_classes: list[str] = json.loads((model_dir / "label_classes.json").read_text(encoding="utf-8"))
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    method = "m2cgen"
-    try:
+    from dart_fallback_codegen import export_forest_to_dart
+
+    if hasattr(model, "estimators_") and hasattr(model, "n_classes_"):
+        # scikit-learn forest: one function per tree. m2cgen's single giant
+        # function ran Flutter's AOT compiler out of memory (300 trees).
+        method = "tree_functions"
+        dart_code = export_forest_to_dart(model)
+    else:
+        method = "m2cgen"
         import m2cgen
 
         dart_code = m2cgen.export_to_dart(model, function_name="score")
-    except Exception:  # noqa: BLE001 � m2cgen can raise many exporter-specific error types
-        method = "fallback_tree"
-        from dart_fallback_codegen import export_forest_to_dart
-
-        dart_code = export_forest_to_dart(model)
 
     generated_filename = "model_v1_generated.dart"
     adapter_filename = "agrispectra_model_v1_adapter.dart"
