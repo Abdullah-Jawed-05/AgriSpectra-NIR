@@ -8,6 +8,7 @@ from datetime import datetime
 import flet as ft
 
 from core import theme
+from core.crops import crop_label
 from ui.components import card, confusion_matrix_grid, leakage_badge
 
 
@@ -53,7 +54,7 @@ class HistoryScreen:
                     ft.Column(
                         spacing=2,
                         controls=[
-                            ft.Text(when, size=13, weight=ft.FontWeight.W_600),
+                            ft.Text(f"{when} · {crop_label(run['crop'])}", size=13, weight=ft.FontWeight.W_600),
                             ft.Text(f"{status} — {metric}", size=12, color=status_color),
                         ],
                     ),

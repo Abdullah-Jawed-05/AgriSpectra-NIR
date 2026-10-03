@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import flet as ft
 
+from pathlib import Path
+
 from core import theme
 from core.config import AppConfig
+from core.crops import crop_label, known_crops, normalize_crop
 from data.db import Database
 
 
@@ -20,7 +23,7 @@ class AppContext:
         self.page = page
         self.config = config
         self.db = db
-        self.crop = "barley"
+        self.crop = config.crop
         self.navigate: callable = lambda name: None  # set by AppShell
         self.refresh_home: callable = lambda: None
 
@@ -53,9 +56,35 @@ class AppShell:
         self.content_pane = ft.Container(expand=True, padding=28, bgcolor=theme.SURFACE)
         self.nav_buttons: dict[str, ft.Container] = {}
 
+        self.crop_dropdown = ft.Dropdown(
+            label="Crop",
+            tooltip="The kind of seed you're sorting and training. Each crop's photos are kept and trained separately.",
+            dense=True,
+            text_size=13,
+            on_select=self._on_crop_select,
+        )
+        self._refresh_crop_dropdown()
+
         nav_column = ft.Column(
             spacing=4,
-            controls=[self._brand_header(), ft.Container(height=12), *self._build_nav_buttons()],
+            controls=[
+                self._brand_header(),
+                ft.Container(height=14),
+                ft.Row(
+                    spacing=4,
+                    controls=[
+                        ft.Container(content=self.crop_dropdown, expand=True),
+                        ft.IconButton(
+                            icon=ft.Icons.ADD,
+                            tooltip="Add a crop",
+                            icon_color=theme.ACCENT,
+                            on_click=lambda e: self._open_add_crop_dialog(),
+                        ),
+                    ],
+                ),
+                ft.Container(height=10),
+                *self._build_nav_buttons(),
+            ],
         )
         sidebar = ft.Container(
             width=208,
@@ -152,6 +181,81 @@ class AppShell:
         on_show = getattr(screen, "on_show", None)
         if on_show:
             on_show()
+
+    # ---- crop ("kind of seed") ------------------------------------------
+
+    def _refresh_crop_dropdown(self) -> None:
+        crops = known_crops(Path(self.ctx.config.raw_data_root), self.ctx.crop)
+        self.crop_dropdown.options = [ft.DropdownOption(key=c, text=crop_label(c)) for c in crops]
+        self.crop_dropdown.value = self.ctx.crop
+
+    def _busy(self) -> bool:
+        train = self._screens.get("train")
+        sort = self._screens.get("sort")
+        return bool(getattr(train, "running", False) or getattr(sort, "importing", False))
+
+    def _on_crop_select(self, e) -> None:
+        value = self.crop_dropdown.value
+        if value and value != self.ctx.crop:
+            self.set_crop(value)
+
+    def _open_add_crop_dialog(self) -> None:
+        field = ft.TextField(label="Crop name", hint_text="e.g. Wheat", autofocus=True)
+        error = ft.Text("", size=12, color=theme.CLASS_COLORS["BROKEN"])
+
+        def confirm(e) -> None:
+            slug = normalize_crop(field.value or "")
+            if not slug:
+                error.value = "Type a name using letters or numbers."
+                self._safe_page_update()
+                return
+            self.page.pop_dialog()
+            self.set_crop(slug)
+
+        field.on_submit = confirm
+        self.page.show_dialog(
+            ft.AlertDialog(
+                title=ft.Text("Add a crop"),
+                content=ft.Column(
+                    tight=True,
+                    spacing=8,
+                    controls=[
+                        ft.Text(
+                            "Its photos are kept and trained separately from other crops.",
+                            size=12,
+                            color=theme.INK_MUTED,
+                        ),
+                        field,
+                        error,
+                    ],
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=lambda e: self.page.pop_dialog()),
+                    ft.FilledButton("Add", on_click=confirm),
+                ],
+            )
+        )
+
+    def set_crop(self, slug: str) -> None:
+        """Switch every screen to another crop. Refused mid-run/mid-import,
+        since those are writing into the current crop's folders."""
+        if self._busy():
+            self._refresh_crop_dropdown()
+            self._safe_page_update()
+            self.ctx.notify("Finish the current training run or import before switching crops.", error=True)
+            return
+        self.ctx.crop = slug
+        self.ctx.config.crop = slug
+        self.ctx.config.save()
+        self._screens.clear()  # screens hold crop-specific state (e.g. the active sort session)
+        self._refresh_crop_dropdown()
+        self.navigate(self._current)
+
+    def _safe_page_update(self) -> None:
+        try:
+            self.page.update()
+        except (AssertionError, RuntimeError):
+            pass
 
     def _on_keyboard(self, e: ft.KeyboardEvent) -> None:
         sort_screen = self._screens.get("sort")

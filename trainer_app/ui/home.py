@@ -7,6 +7,7 @@ from pathlib import Path
 import flet as ft
 
 from core import theme
+from core.crops import crop_label
 from pipeline.preflight import scan_raw_data
 from ui.components import card, class_counts_row, section_title, stat_tile
 
@@ -91,7 +92,7 @@ class HomeScreen:
             spacing=20,
             scroll=ft.ScrollMode.AUTO,
             controls=[
-                ft.Text("AgriSpectra Trainer", size=26, weight=ft.FontWeight.BOLD, color=theme.INK),
+                ft.Text(f"AgriSpectra Trainer · {crop_label(ctx.crop)}", size=26, weight=ft.FontWeight.BOLD, color=theme.INK),
                 ft.Text(
                     "Sort seed photos, then train and evaluate Model V1 — entirely offline.",
                     size=14,

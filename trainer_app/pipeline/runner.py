@@ -154,6 +154,7 @@ class PipelineRunner:
                 str(self.config.scripts_dir() / "prepare_dataset.py"),
                 "--raw-dir", str(Path(self.config.raw_data_root)),
                 "--out", str(dataset_dir),
+                "--crop", crop,  # never mix crops into one model
             ]
             if one_seed:
                 prepare_argv.append("--one-seed")

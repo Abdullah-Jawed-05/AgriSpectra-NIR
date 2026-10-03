@@ -16,11 +16,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import flet as ft
 
+import core.paths as paths
 from core.config import AppConfig
 from data.db import Database
 from ui.app import build_page
 
 _tmp = Path(tempfile.mkdtemp(prefix="trainer_web_"))
+# Anything that saves settings (Settings screen, switching crop) must land in
+# the throwaway dir -- otherwise it overwrites the real settings.json with
+# these temp paths.
+paths.config_file = lambda: _tmp / "settings.json"
 
 
 def main(page: ft.Page) -> None:

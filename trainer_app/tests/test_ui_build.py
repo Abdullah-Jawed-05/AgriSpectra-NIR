@@ -8,6 +8,8 @@ wiring mistakes (wrong constructor args, renamed enums, bad imports).
 
 from __future__ import annotations
 
+import flet as ft
+
 from core import theme
 
 
@@ -366,3 +368,96 @@ def test_sort_screen_presorted_plan_and_import(config, db, tmp_path):
     assert len(list((batch / "IMPURITIES").iterdir())) == 1
     assert "Imported 4 photos" in text_of(screen.presorted_container)
     assert notes == []
+
+
+def test_crop_switch_changes_every_screen_and_persists(config, db, tmp_path, monkeypatch):
+    import json
+
+    import core.paths as paths
+    from ui.app import AppShell
+
+    settings = tmp_path / "settings.json"
+    monkeypatch.setattr(paths, "config_file", lambda: settings)  # never touch the real settings
+
+    shell = AppShell(StubPage(), config, db)
+    shell.mount()
+    shell.navigate("sort")
+    old_sort = shell._screens["sort"]
+
+    shell.set_crop("wheat")
+
+    assert shell.ctx.crop == "wheat"
+    assert json.loads(settings.read_text())["crop"] == "wheat"
+    assert shell._screens["sort"] is not old_sort  # rebuilt, not holding barley's session
+    assert shell.crop_dropdown.value == "wheat"
+    assert "wheat" in [o.key for o in shell.crop_dropdown.options]
+
+
+def test_add_crop_dialog_switches_on_enter_and_rejects_blank(config, db, tmp_path, monkeypatch):
+    import core.paths as paths
+    from ui.app import AppShell
+
+    monkeypatch.setattr(paths, "config_file", lambda: tmp_path / "settings.json")
+    page = StubPage()
+    shell = AppShell(page, config, db)
+    shell.mount()
+
+    shell._open_add_crop_dialog()
+    dialog = page._dialogs[-1]
+    field, error = dialog.content.controls[1], dialog.content.controls[2]
+
+    field.value = "  !! "
+    field.on_submit(None)
+    assert page._dialogs == [dialog] and error.value  # stays open with a hint
+    assert shell.ctx.crop == "barley"
+
+    field.value = "Durum Wheat"
+    field.on_submit(None)  # Enter in the field
+    assert page._dialogs == []
+    assert shell.ctx.crop == "durum_wheat"
+
+
+def test_crop_switch_refused_mid_training(config, db, tmp_path, monkeypatch):
+    import core.paths as paths
+    from ui.app import AppShell
+
+    monkeypatch.setattr(paths, "config_file", lambda: tmp_path / "settings.json")
+    shell = AppShell(StubPage(), config, db)
+    shell.mount()
+    shell.navigate("train")
+    shell._screens["train"].running = True
+    notes = []
+    shell.ctx.notify = lambda msg, **k: notes.append(msg)
+
+    shell.set_crop("wheat")
+
+    assert shell.ctx.crop == "barley"
+    assert notes and "Finish" in notes[0]
+
+
+def test_non_barley_run_cannot_be_promoted(config, db, tmp_path):
+    from ui.train_screen import TrainScreen
+
+    class Ctx:
+        pass
+
+    ctx = Ctx()
+    ctx.config = config
+    ctx.db = db
+    ctx.crop = "wheat"
+    ctx.page = StubPage()
+    ctx.navigate = lambda n: None
+    notes = []
+    ctx.notify = lambda msg, **k: notes.append(msg)
+
+    run_id = db.create_run(str(tmp_path / "w"), crop="wheat")
+    db.finish_run(run_id, model_dir=str(tmp_path / "model"), macro_f1=0.5)
+
+    screen = TrainScreen(ctx)
+    screen.build()
+    controls = screen._promote_controls(db.get_run(run_id), lambda e: None)
+    assert not any(isinstance(c, ft.Row) for c in controls)  # no Promote button row
+    assert "only supports Barley" in controls[0].value
+
+    screen._do_promote(run_id)  # the handler itself refuses too
+    assert notes and "Only Barley" in notes[0]

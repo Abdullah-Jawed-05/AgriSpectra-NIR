@@ -9,6 +9,7 @@ from pathlib import Path
 import flet as ft
 
 from core import theme
+from core.crops import crop_label
 from sort.phone_import import import_phone_export
 from sort.presorted_import import (
     BatchExistsError,
@@ -75,7 +76,7 @@ class SortScreen:
                 controls=[
                     section_title("Import photos"),
                     ft.Text(
-                        "Drop in a folder of raw barley photos. Each usable photo is segmented into "
+                        f"Drop in a folder of raw {crop_label(self.ctx.crop).lower()} photos. Each usable photo is segmented into "
                         "individual seed crops you sort one at a time.",
                         size=12,
                         color=theme.INK_FAINT,
@@ -202,7 +203,7 @@ class SortScreen:
         )
 
         self.root_column.controls = [
-            ft.Text("Sort", size=24, weight=ft.FontWeight.BOLD, color=theme.INK),
+            ft.Text(f"Sort · {crop_label(self.ctx.crop)}", size=24, weight=ft.FontWeight.BOLD, color=theme.INK),
             self.import_panel,
             self.sort_loop_panel,
             self.empty_state,
@@ -471,6 +472,8 @@ class SortScreen:
         self.source_label.value = f"from {item['source_image']}"
         label = item["suggested_label"]
         self.suggestion_text.value = f"Suggested: {theme.CLASS_LABELS.get(label, label)} — {item['suggested_reason']}"
+        if self.ctx.crop != "barley":
+            self.suggestion_text.value += " (rule tuned on barley — trust it less here)"
         self.suggestion_text.color = theme.CLASS_COLORS.get(label, theme.INK)
 
         for cls, btn in self.class_buttons.items():

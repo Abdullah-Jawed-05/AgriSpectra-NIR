@@ -9,6 +9,7 @@ from pathlib import Path
 import flet as ft
 
 from core import theme
+from core.crops import can_promote_to_phone_app, crop_label
 from pipeline.preflight import scan_raw_data
 from pipeline.runner import PipelineRunner, StageFailed
 from promote.activate import PredictorFileError, build_apk, enable_model_v1, install_apk, list_connected_devices
@@ -56,7 +57,7 @@ class TrainScreen:
 
     def build(self) -> ft.Control:
         self.root_column.controls = [
-            ft.Text("Train", size=24, weight=ft.FontWeight.BOLD, color=theme.INK),
+            ft.Text(f"Train · {crop_label(self.ctx.crop)}", size=24, weight=ft.FontWeight.BOLD, color=theme.INK),
             self.preflight_panel,
             self.run_panel,
             self.results_panel,
@@ -164,7 +165,7 @@ class TrainScreen:
         self._safe_update()
 
     def _do_run(self, test_fraction: float, val_fraction: float, test_batch: str | None) -> None:
-        row_id = self.ctx.db.create_run("")
+        row_id = self.ctx.db.create_run("", crop=self.ctx.crop)
         self.current_run_id = row_id
         self.ctx.db.set_work_dir(row_id, str(Path(self.ctx.config.work_root) / "runs" / row_id))
 
@@ -296,22 +297,50 @@ class TrainScreen:
                     confusion_matrix_grid(confusion, label_classes),
                     ft.Divider(),
                     section_title("Promote to App"),
-                    ft.Text(
-                        "Exports this model as dependency-free Dart you can drop into the Flutter app. "
-                        "Never wired in automatically.",
-                        size=12,
-                        color=theme.INK_FAINT,
-                    ),
-                    ft.Row(spacing=10, controls=[self.version_label_field, ft.FilledButton("Promote to App", icon=ft.Icons.UPLOAD_OUTLINED, on_click=do_promote, style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF"))]),
-                    self.promote_status,
+                    *self._promote_controls(run, do_promote),
                 ],
             )
         )
         self.results_panel.visible = True
         self._safe_update()
 
+    def _promote_controls(self, run, do_promote) -> list[ft.Control]:
+        if not can_promote_to_phone_app(run["crop"]):
+            return [
+                ft.Text(
+                    f"The phone app only supports Barley so far, so this {crop_label(run['crop']).lower()} "
+                    "model can be trained and evaluated here but not promoted into it.",
+                    size=12,
+                    color=theme.INK_MUTED,
+                )
+            ]
+        return [
+            ft.Text(
+                "Exports this model as dependency-free Dart you can drop into the Flutter app. "
+                "Never wired in automatically.",
+                size=12,
+                color=theme.INK_FAINT,
+            ),
+            ft.Row(
+                spacing=10,
+                controls=[
+                    self.version_label_field,
+                    ft.FilledButton(
+                        "Promote to App",
+                        icon=ft.Icons.UPLOAD_OUTLINED,
+                        on_click=do_promote,
+                        style=ft.ButtonStyle(bgcolor=theme.ACCENT, color="#FFFFFF"),
+                    ),
+                ],
+            ),
+            self.promote_status,
+        ]
+
     def _do_promote(self, run_id: str) -> None:
         run = self.ctx.db.get_run(run_id)
+        if not can_promote_to_phone_app(run["crop"]):
+            self.ctx.notify(f"Only Barley models can go into the phone app (this run is {crop_label(run['crop'])}).", error=True)
+            return
         try:
             result = promote_model(
                 self.ctx.config,

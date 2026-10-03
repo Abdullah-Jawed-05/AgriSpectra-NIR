@@ -18,9 +18,6 @@ from typing import Optional
 
 from . import paths
 
-# The taxonomy is a closed, fixed list (§1) — not user-configurable.
-CROP = "barley"
-
 
 def _discover_pipeline_dir() -> str:
     """Find the ml/ pipeline scripts directory.
@@ -60,6 +57,24 @@ def _discover_python_exe() -> str:
     return shutil.which("python") or shutil.which("python3") or ""
 
 
+def _is_usable_python(exe: str) -> bool:
+    """Whether `exe` could plausibly run ml/'s scripts: it exists (as a
+    path, or a bare name on PATH) and, in a packaged build, isn't this
+    app's own exe -- see `_discover_python_exe`."""
+    if not exe:
+        return False
+    p = Path(exe)
+    if not (p.is_file() or shutil.which(exe)):
+        return False
+    if getattr(sys, "frozen", False) and p.is_file():
+        try:
+            if p.resolve() == Path(sys.executable).resolve():
+                return False
+        except OSError:
+            return False
+    return True
+
+
 def _discover_app_lib_ml_dir() -> str:
     """Find the Flutter app's `app/lib/ml/` directory — the "Copy to app"
     destination for Promote to App (§4.3). Same two-candidate strategy as
@@ -93,6 +108,7 @@ class AppConfig:
     python_exe: str = field(default_factory=_discover_python_exe)
     app_lib_ml_dir: str = field(default_factory=_discover_app_lib_ml_dir)
     flutter_exe: str = field(default_factory=_discover_flutter_exe)
+    crop: str = "barley"  # the crop (kind of seed) being worked on; see core/crops.py
 
     def ensure_dirs(self) -> None:
         for p in (self.raw_data_root, self.models_root, self.work_root, self.export_root):
@@ -150,7 +166,40 @@ class AppConfig:
         for k, v in data.items():
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
+        cfg.repair_stale_tool_paths()
         return cfg
+
+    def repair_stale_tool_paths(self) -> list[str]:
+        """Re-discover tool paths that no longer point at anything usable.
+
+        Saved paths outlive what they point at: a build folder gets deleted,
+        or an older packaged build saved its own exe as python_exe. Left as
+        they are, Train and Promote fail until someone fixes them by hand in
+        Settings. A path that still works is never touched, and a broken one
+        is only replaced when discovery finds something that works. Returns
+        the names of the fields that changed; nothing is written to disk."""
+        changed = []
+        if not self.is_pipeline_configured():
+            found = _discover_pipeline_dir()
+            if (Path(found) / "scripts" / "prepare_dataset.py").is_file():
+                self.pipeline_dir = found
+                changed.append("pipeline_dir")
+        if not _is_usable_python(self.python_exe):
+            found = _discover_python_exe()
+            if found and _is_usable_python(found):
+                self.python_exe = found
+                changed.append("python_exe")
+        if not self.is_app_lib_ml_dir_configured():
+            found = _discover_app_lib_ml_dir()
+            if (Path(found) / "vision_pipeline.dart").is_file():
+                self.app_lib_ml_dir = found
+                changed.append("app_lib_ml_dir")
+        if not self.flutter_exe or not (Path(self.flutter_exe).is_file() or shutil.which(self.flutter_exe)):
+            found = _discover_flutter_exe()
+            if found and found != self.flutter_exe:
+                self.flutter_exe = found
+                changed.append("flutter_exe")
+        return changed
 
     def save(self) -> None:
         paths.config_file().write_text(json.dumps(self.to_dict(), indent=2))

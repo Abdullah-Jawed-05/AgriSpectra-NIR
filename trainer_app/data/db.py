@@ -84,6 +84,8 @@ CREATE TABLE IF NOT EXISTS runs (
 # already has an app.sqlite3 on disk from before this column existed.
 _MIGRATIONS = [
     "ALTER TABLE runs ADD COLUMN v0_baseline_json TEXT",
+    # Runs from before crops were selectable were all barley.
+    "ALTER TABLE runs ADD COLUMN crop TEXT NOT NULL DEFAULT 'barley'",
 ]
 
 
@@ -287,12 +289,12 @@ class Database:
 
     # ---- training runs -------------------------------------------------
 
-    def create_run(self, work_dir: str) -> str:
+    def create_run(self, work_dir: str, crop: str = "barley") -> str:
         run_id = new_id()
         with self.cursor() as cur:
             cur.execute(
-                "INSERT INTO runs (id, created_at, status, work_dir) VALUES (?, ?, 'running', ?)",
-                (run_id, time.time(), work_dir),
+                "INSERT INTO runs (id, created_at, status, work_dir, crop) VALUES (?, ?, 'running', ?, ?)",
+                (run_id, time.time(), work_dir, crop),
             )
         return run_id
 
@@ -354,15 +356,17 @@ class Database:
         """The best succeeded run strictly *before* `run_id` in time, by
         `metric` — used for the "compare against previous best" headline
         (§3 Mode B.3). Chronological, not just "best other run": a run
-        created later must never be used as the "previous" best."""
+        created later must never be used as the "previous" best. Same crop
+        only — a wheat run's score says nothing about a barley model."""
         if metric not in {"macro_f1", "balanced_accuracy", "roc_auc"}:
             raise ValueError(metric)
         with self.cursor() as cur:
             cur.execute(
                 f"SELECT * FROM runs WHERE status='succeeded' AND {metric} IS NOT NULL "
                 f"AND created_at < (SELECT created_at FROM runs WHERE id = ?) "
+                f"AND crop = (SELECT crop FROM runs WHERE id = ?) "
                 f"ORDER BY {metric} DESC LIMIT 1",
-                (run_id,),
+                (run_id, run_id),
             )
             return cur.fetchone()
 

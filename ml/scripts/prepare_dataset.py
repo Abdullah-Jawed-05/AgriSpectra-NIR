@@ -87,6 +87,12 @@ def main() -> None:
         "printed surface (the app's quality gate rejects these at capture time; they "
         "fragment into dozens of spurious 'seed' rows — see docs/VALIDATION.md)",
     )
+    parser.add_argument(
+        "--crop",
+        default=None,
+        help="only process raw/<crop>/ (default: every crop folder). Mixing crops would "
+        "train one model on several kinds of seed, which is never what you want.",
+    )
     args = parser.parse_args()
 
     if not args.raw_dir.exists():
@@ -111,7 +117,13 @@ def main() -> None:
     n_textured_skipped = 0
     n_piled_skipped = 0
 
-    for crop_dir in sorted(p for p in args.raw_dir.iterdir() if p.is_dir()):
+    crop_dirs = sorted(p for p in args.raw_dir.iterdir() if p.is_dir())
+    if args.crop is not None:
+        crop_dirs = [p for p in crop_dirs if p.name == args.crop]
+        if not crop_dirs:
+            raise SystemExit(f"No folder for crop '{args.crop}' under {args.raw_dir}.")
+
+    for crop_dir in crop_dirs:
         crop_name = crop_dir.name
         subdirs = sorted(p for p in crop_dir.iterdir() if p.is_dir())
         if not subdirs:

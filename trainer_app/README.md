@@ -96,15 +96,21 @@ pyinstaller main.py --name "AgriSpectra Trainer" --windowed \
     --add-data "flet-windows.zip;flet_desktop/app" \
     --collect-all flet --collect-all flet_desktop \
     --noconfirm
+
+# 4. Ship the pipeline scripts next to the exe, where auto-detection looks
+#    for them. Only git-tracked files -- a working ml/ can hold gigabytes
+#    of local datasets that must not be copied. Run from the repo root:
+git ls-files ml | while read f; do mkdir -p "trainer_app/dist/AgriSpectra Trainer/$(dirname "$f")" && cp "$f" "trainer_app/dist/AgriSpectra Trainer/$f"; done
 ```
 
 The output lands in `dist/AgriSpectra Trainer/` — zip that whole folder
-(not just the `.exe`; it needs `_internal/` alongside it) to hand off.
-Before using it: open **Settings** and point **Pipeline location** at a
-real `ml/` directory and **Python interpreter** at a real `python.exe` —
-auto-detection only works when the exe happens to sit next to a checkout
-(as `pipeline_dir`'s own "not configured" message explains); neither can
-be auto-detected inside a `dist/` folder in general.
+(not just the `.exe`; it needs `_internal/` and `ml/` alongside it) to
+hand off. On first launch it finds the bundled `ml/` and the `python` on
+PATH by itself. That Python must have `ml/requirements.txt` installed
+(scikit-learn, pandas, …) — check **Settings → Python interpreter** if
+Train reports a missing module. A saved path that stops existing (a
+deleted build folder, a moved checkout) is re-detected on the next launch
+rather than left broken; a path that still works is never overridden.
 
 Launch-test it before shipping — actually open it and click into Sort
 Mode, not just confirm the process doesn't immediately exit; both earlier
