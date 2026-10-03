@@ -323,8 +323,8 @@ The barley reference classes were growth-tested. Observed germination:
 
 | Class     | Germinated |
 |-----------|------------|
-| Good      | ~75%       |
-| Damaged   | 45%        |
+| Good      | 90%        |
+| Damaged   | 65%        |
 | Broken    | 0%         |
 | Shriveled | 0%         |
 

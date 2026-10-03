@@ -86,8 +86,8 @@ void main() {
 
     final stats = engine.aggregate(seedsDetected: 11, accepted: seeds, seedsRejected: 0);
 
-    // (6 * 0.75 + 2 * 0.45 + 0 + 0) / 10 seeds; the impurity is not a seed.
-    expect(stats.expectedGermination, closeTo(0.54, 1e-9));
+    // (6 * 0.90 + 2 * 0.65 + 0 + 0) / 10 seeds; the impurity is not a seed.
+    expect(stats.expectedGermination, closeTo(0.67, 1e-9));
     expect(stats.isNonViable, isFalse);
     expect(stats.confidence, greaterThan(0));
   });

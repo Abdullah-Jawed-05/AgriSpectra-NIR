@@ -6,8 +6,8 @@ import 'quality_class.dart';
 ///
 /// | Class     | Germinated |
 /// |-----------|------------|
-/// | Good      | ~75%       |
-/// | Damaged   | 45%        |
+/// | Good      | 90%        |
+/// | Damaged   | 65%        |
 /// | Broken    | 0%         |
 /// | Shriveled | 0%         |
 ///
@@ -18,8 +18,8 @@ class GerminationReference {
   GerminationReference._();
 
   static const Map<QualityClass, double> barley = {
-    QualityClass.good: 0.75,
-    QualityClass.damaged: 0.45,
+    QualityClass.good: 0.90,
+    QualityClass.damaged: 0.65,
     QualityClass.broken: 0.0,
     QualityClass.shriveled: 0.0,
   };
