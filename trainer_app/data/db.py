@@ -89,6 +89,9 @@ _MIGRATIONS = [
     # JSON list of the batch folders a run trained on; NULL for runs from
     # before batches were selectable (they used every batch).
     "ALTER TABLE runs ADD COLUMN batches_json TEXT",
+    # Test rows whose photo is byte-identical to one in train/val (see
+    # pipeline/duplicates.py); NULL for runs from before this was checked.
+    "ALTER TABLE runs ADD COLUMN test_rows_seen_in_training INTEGER",
 ]
 
 

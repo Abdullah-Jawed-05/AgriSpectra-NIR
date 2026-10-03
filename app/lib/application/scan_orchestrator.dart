@@ -10,6 +10,7 @@ import '../domain/entities/nir_device_info.dart';
 import '../domain/entities/scan.dart';
 import '../domain/entities/seed_result.dart';
 import '../domain/entities/spectral_measurement.dart';
+import '../ml/model_v1_predictor.dart' show activeVisionModelVersion;
 import '../ml/vision_pipeline.dart';
 import '../nir/fusion_engine.dart';
 import '../nir/no_nir_device.dart';
@@ -112,7 +113,7 @@ class ScanOrchestrator {
       numberOfSeeds: vision.seedsDetected,
       batchScore: fusionResult.combinedScore,
       confidence: fusionResult.confidence,
-      visionModelVersion: AppVersions.visionModelVersion,
+      visionModelVersion: activeVisionModelVersion,
       analysisVersion: AppVersions.analysisVersion,
       nirAvailable: spectral != null,
       nirDeviceId: spectral?.deviceId,

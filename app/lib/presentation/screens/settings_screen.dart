@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../ml/model_v1_predictor.dart' show activeVisionModelVersion;
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -16,7 +17,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           _Section(title: 'About', children: [
             _InfoTile(label: 'App version', value: AppVersions.appVersion),
-            _InfoTile(label: 'Vision model', value: AppVersions.visionModelVersion),
+            const _InfoTile(label: 'Vision model', value: activeVisionModelVersion),
             _InfoTile(label: 'NIR model', value: AppVersions.nirModelVersion),
             _InfoTile(label: 'Fusion model', value: AppVersions.fusionModelVersion),
             _InfoTile(label: 'NIR protocol', value: 'v${AppVersions.nirProtocolVersion}'),

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import joblib
@@ -48,6 +49,11 @@ import '{generated_import}' as generated;
 /// that ships in the app before any model exists (see
 /// app/lib/ml/model_v1_predictor.dart, which gates on this).
 const bool modelV1Available = true;
+
+/// Which promoted model this is (the Trainer's version label, by default
+/// "run_<id>"). Scans made with it record this, so a result can always be
+/// traced back to the training run that produced it.
+const String modelV1VersionLabel = '{version_label}';
 
 /// Feature-vector order `predictModelV1` expects in its input map's keys.
 /// Keep in sync with app/lib/ml/feature_extractor.dart's SeedFeatures.
@@ -85,6 +91,12 @@ def _dart_string_list(items: list[str]) -> str:
     return f"[{inner}]"
 
 
+def _dart_safe_label(label: str) -> str:
+    """The version label goes inside a Dart string literal: keep it to
+    characters that need no escaping."""
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", label).strip("_") or "unlabelled"
+
+
 def _numbered_comment(prefix: str, items: list[str]) -> str:
     return "\n".join(f"//   {i}: {name}" for i, name in enumerate(items)) if items else "//   (none)"
 
@@ -120,6 +132,7 @@ def export_model(model_dir: Path, export_dir: Path, version_label: str) -> dict:
             feature_comment=_numbered_comment("feature", feature_columns),
             label_comment=_numbered_comment("label", label_classes),
             generated_import=generated_filename,
+            version_label=_dart_safe_label(version_label),
             feature_list_dart=_dart_string_list(feature_columns),
             label_list_dart=_dart_string_list(label_classes),
         ),

@@ -15,7 +15,21 @@ import 'agrispectra_model_v1_adapter.dart';
 /// (ideally from a different day than it was trained on) before it's
 /// allowed to override the hand-tuned V0 rule. Flip this manually, and
 /// only after that check, then rebuild the app.
+///
+/// 2026-10-03: the promoted model (run_47136c32aac0) is available but kept
+/// off. Its reported test was mostly photos it had trained on; on never-seen
+/// photos it beat V0 only narrowly and missed most damaged seeds — see
+/// docs/VALIDATION.md "Model V1 run_47136c32aac0".
 const bool useModelV1 = false;
+
+/// Whether scans actually use Model V1 (enabled *and* a model promoted).
+const bool modelV1Active = useModelV1 && modelV1Available;
+
+/// The vision model version a scan records (DB, PDF report, Settings):
+/// Model V1 identifies the promoted training run, so two different V1
+/// models never look like the same one.
+const String modelV1Version = '${AppVersions.visionModelVersionV1}+$modelV1VersionLabel';
+const String activeVisionModelVersion = modelV1Active ? modelV1Version : AppVersions.visionModelVersion;
 
 /// Flattens [SeedFeatures] into the exact flat key -> value map Model V1
 /// was trained on — field-for-field the same flat keys
@@ -77,7 +91,7 @@ QualityPrediction predictionFromModelV1Result(ModelV1Prediction result) {
       ),
     ],
     anomalies: isGood ? const [] : const ['model_v1_flagged'],
-    modelVersion: AppVersions.visionModelVersionV1,
+    modelVersion: modelV1Version,
   );
 }
 
@@ -87,7 +101,7 @@ QualityPrediction predictionFromModelV1Result(ModelV1Prediction result) {
 /// older promote) — callers must always have the V0 rule engine as a
 /// fallback, never assume this succeeds.
 QualityPrediction? tryModelV1(SeedFeatures features) {
-  if (!useModelV1 || !modelV1Available) return null;
+  if (!modelV1Active) return null;
   try {
     final result = predictModelV1(_toFeatureMap(features));
     return predictionFromModelV1Result(result);

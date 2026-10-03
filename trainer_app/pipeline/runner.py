@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core.config import AppConfig
+from pipeline.duplicates import count_test_rows_seen_in_training
 
 OnLine = Callable[[str, str], None]  # (stage_name, line)
 OnProgress = Callable[[str, float], None]  # (stage_name, 0..1)
@@ -203,6 +204,22 @@ class PipelineRunner:
             raise StageFailed("split", result.returncode, result.log[-2000:])
 
         split_summary = json.loads((split_dir / "split_summary.json").read_text())
+        # split_dataset.py keeps *batches* apart; that only makes the test
+        # independent if different batches hold different photos.
+        try:
+            seen = count_test_rows_seen_in_training(raw_crop_dir, split_dir)
+        except OSError as exc:
+            seen = None
+            line_cb("split", f"Could not check test photos against training photos: {exc}")
+        split_summary["test_rows_seen_in_training"] = seen
+        if seen:
+            split_summary["test_leakage_safe"] = False
+            line_cb(
+                "split",
+                f"{seen} of {split_summary['test']['rows']} test rows come from photos that are also in "
+                "training — the test is not independent, so it is NOT leakage-safe.",
+            )
+            (split_dir / "split_summary.json").write_text(json.dumps(split_summary, indent=2))
 
         # --- Stage 3: train_baseline.py -----------------------------------
         self._stage(on_stage_change, "train")

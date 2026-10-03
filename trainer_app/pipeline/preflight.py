@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
+from pipeline.duplicates import SharedPhotos, find_shared_photos
+
 VALID_LABELS = {"GOOD", "DAMAGED", "BROKEN", "SHRIVELED", "IMPURITIES", "UNKNOWN"}
 
 # A class is flagged imbalanced if it has fewer than this many seeds, or
@@ -46,6 +48,7 @@ class PreflightSummary:
     class_counts: dict[str, int] = field(default_factory=dict)
     batch_ids: list[str] = field(default_factory=list)  # included batches
     batches: list[BatchInfo] = field(default_factory=list)
+    shared_photos: list[SharedPhotos] = field(default_factory=list)  # among included batches
     total_images: int = 0
     warnings: list[str] = field(default_factory=list)
 
@@ -130,6 +133,14 @@ def scan_raw_data(raw_data_root: Path, crop: str, excluded_batches: Iterable[str
             "session, so the test metrics will NOT be leakage-safe — treat them as a sanity "
             "check only, not a generalization estimate."
         )
+    else:
+        summary.shared_photos = find_shared_photos(crop_dir, summary.batch_ids)
+        for s in summary.shared_photos:
+            summary.warnings.append(
+                f"{s.batch_a} and {s.batch_b} share {s.n_shared} identical photo(s). If one is held "
+                "out for testing, the model is tested on photos it trained on and the score will "
+                "look better than it is. Untick one of them unless the overlap is intended."
+            )
 
     biggest = max(summary.class_counts.values())
     for label, n in summary.class_counts.items():

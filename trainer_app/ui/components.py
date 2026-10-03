@@ -76,6 +76,18 @@ def trained_on_text(run) -> str:
     return f"Trained on {len(batches)} batch{'es' if len(batches) != 1 else ''}: {', '.join(batches)}"
 
 
+def test_overlap_text(run) -> str | None:
+    """Why a run's test isn't independent of its training photos, or None."""
+    n = run["test_rows_seen_in_training"] if "test_rows_seen_in_training" in run.keys() else None
+    if not n:
+        return None
+    return (
+        f"{n} of {run['n_test_rows']} test rows come from photos that are also in the training "
+        "batches, so these scores overstate how the model does on new seeds. Untick one of the "
+        "overlapping batches (Pre-flight names them) and retrain for an honest test."
+    )
+
+
 def section_title(text: str) -> ft.Text:
     return ft.Text(text, size=16, weight=ft.FontWeight.W_700, color=theme.INK)
 

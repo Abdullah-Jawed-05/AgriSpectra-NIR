@@ -1,3 +1,4 @@
+import 'package:agrispectra/core/constants/app_constants.dart';
 import 'package:agrispectra/domain/entities/seed_features.dart';
 import 'package:agrispectra/domain/value_objects/quality_class.dart';
 import 'package:agrispectra/ml/agrispectra_model_v1_adapter.dart';
@@ -50,6 +51,21 @@ void main() {
   test('tryModelV1 returns null while V1 is unavailable/disabled, never throws', () {
     expect(() => tryModelV1(_features()), returnsNormally);
     expect(tryModelV1(_features()), isNull);
+  });
+
+  test('scans record the V0 rule engine as their vision model while V1 is off', () {
+    expect(modelV1Active, isFalse);
+    expect(activeVisionModelVersion, AppVersions.visionModelVersion);
+  });
+
+  test('the promoted model runs and says which training run it came from', () {
+    if (!modelV1Available) return; // placeholder adapter: nothing promoted
+    final result = predictModelV1(const {'aspect_ratio': 2.6, 'circularity': 0.72});
+    expect(modelV1LabelOrder, contains(result.label));
+    expect(result.classScores, hasLength(modelV1LabelOrder.length));
+    expect(modelV1VersionLabel, isNotEmpty);
+    expect(modelV1Version, '${AppVersions.visionModelVersionV1}+$modelV1VersionLabel');
+    expect(predictionFromModelV1Result(result).modelVersion, modelV1Version);
   });
 
   group('predictionFromModelV1Result (the actual label/confidence mapping)', () {

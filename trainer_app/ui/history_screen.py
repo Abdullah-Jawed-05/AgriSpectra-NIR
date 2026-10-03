@@ -9,7 +9,7 @@ import flet as ft
 
 from core import theme
 from core.crops import crop_label
-from ui.components import card, confusion_matrix_grid, leakage_badge, trained_on_text
+from ui.components import card, confusion_matrix_grid, leakage_badge, test_overlap_text, trained_on_text
 
 
 class HistoryScreen:
@@ -86,6 +86,11 @@ class HistoryScreen:
                                         color=theme.INK_FAINT,
                                     ),
                                     ft.Text(trained_on_text(run), size=12, color=theme.INK_FAINT),
+                                    *(
+                                        [ft.Text(overlap, size=12, color=theme.CLASS_COLORS["BROKEN"])]
+                                        if (overlap := test_overlap_text(run))
+                                        else []
+                                    ),
                                     confusion_matrix_grid(confusion, label_classes),
                                 ],
                             )

@@ -14,7 +14,7 @@ from pipeline.preflight import scan_raw_data
 from pipeline.runner import PipelineRunner, StageFailed
 from promote.activate import PredictorFileError, build_apk, enable_model_v1, install_apk, list_connected_devices
 from promote.export import copy_promoted_to, promote_model
-from ui.components import card, class_counts_row, confusion_matrix_grid, leakage_badge, pipeline_stepper, section_title, stat_tile, trained_on_text
+from ui.components import card, class_counts_row, confusion_matrix_grid, leakage_badge, pipeline_stepper, section_title, stat_tile, test_overlap_text, trained_on_text
 
 STAGES = ["prepare", "split", "train", "evaluate"]
 MAX_LOG_LINES = 400
@@ -311,6 +311,7 @@ class TrainScreen:
             n_batches=len(set(split_summary["train"]["batches"]) | set(split_summary["val"]["batches"]) | set(split_summary["test"]["batches"])),
             test_leakage_safe=int(split_summary["test_leakage_safe"]),
             val_leakage_safe=int(split_summary["val_leakage_safe"]),
+            test_rows_seen_in_training=split_summary.get("test_rows_seen_in_training"),
             macro_f1=evaluation_report["macro_f1"],
             balanced_accuracy=evaluation_report["balanced_accuracy"],
             roc_auc=evaluation_report.get("roc_auc_ovr_macro"),
@@ -392,6 +393,11 @@ class TrainScreen:
                         ],
                     ),
                     ft.Text(trained_on_text(run), size=12, color=theme.INK_MUTED),
+                    *(
+                        [ft.Text(overlap, size=12, weight=ft.FontWeight.W_600, color=theme.CLASS_COLORS["BROKEN"])]
+                        if (overlap := test_overlap_text(run))
+                        else []
+                    ),
                     delta_control,
                     v0_control,
                     section_title("Confusion matrix"),
@@ -547,6 +553,20 @@ class TrainScreen:
                         "predictions worse by this run's own numbers.",
                         size=12,
                         color=theme.INK_FAINT if beats_v0 else theme.CLASS_COLORS["BROKEN"],
+                    ),
+                ],
+            )
+
+        if not run["test_leakage_safe"]:
+            comparison = ft.Column(
+                spacing=8,
+                controls=[
+                    comparison,
+                    ft.Text(
+                        (test_overlap_text(run) or "This run's test split is NOT leakage-safe.")
+                        + " Both numbers above come from that test, so they don't show how V1 does on new seeds.",
+                        size=12,
+                        color=theme.CLASS_COLORS["BROKEN"],
                     ),
                 ],
             )

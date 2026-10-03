@@ -4,6 +4,7 @@ import '../core/constants/app_constants.dart';
 import '../domain/entities/batch_statistics.dart';
 import '../domain/entities/fusion_result.dart';
 import '../domain/entities/spectral_measurement.dart';
+import '../ml/model_v1_predictor.dart' show activeVisionModelVersion;
 import 'nir_quality.dart';
 
 /// Late-fusion combiner (§35, §71): runs after the vision pipeline and the
@@ -39,7 +40,7 @@ class FusionEngine {
         confidence: visualStats.confidence,
         seedCount: visualStats.seedsAccepted,
         anomalies: visualStats.anomalyCount,
-        modelVersions: const {'vision': AppVersions.visionModelVersion},
+        modelVersions: const {'vision': activeVisionModelVersion},
       );
     }
 
@@ -59,7 +60,7 @@ class FusionEngine {
         seedCount: visualStats.seedsAccepted,
         anomalies: visualStats.anomalyCount,
         modelVersions: const {
-          'vision': AppVersions.visionModelVersion,
+          'vision': activeVisionModelVersion,
           'nir': AppVersions.nirModelVersion,
           'fusion': AppVersions.fusionModelVersion,
         },
@@ -91,7 +92,7 @@ class FusionEngine {
       seedCount: visualStats.seedsAccepted,
       anomalies: visualStats.anomalyCount,
       modelVersions: const {
-        'vision': AppVersions.visionModelVersion,
+        'vision': activeVisionModelVersion,
         'nir': AppVersions.nirModelVersion,
         'fusion': AppVersions.fusionModelVersion,
       },
